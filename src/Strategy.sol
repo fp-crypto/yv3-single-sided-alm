@@ -104,8 +104,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         uint256 amountToSwap;
 
         if (total0InLp == 0 && total1InLp == 0) {
-            // LP is empty, default to swapping 50% of asset's value
-            amountToSwap = assetBalance / 2;
+            // TODO: Implement fallback logic
         } else {
             if (_ASSET_IS_TOKEN_0) {
                 // Asset is token0. We want to swap asset (token0) for _OTHER_TOKEN (token1).
