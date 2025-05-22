@@ -219,7 +219,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this)); // Use current balance if any
         } else {
             // Perform swap
-            asset.forceApprove(_POOL, amountToSwap);
+            // asset.forceApprove(_POOL, amountToSwap); // Approval not needed due to callback payment model
             bytes memory data = abi.encode(address(asset));
 
             if (_ASSET_IS_TOKEN_0) {
@@ -332,8 +332,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         ) - otherTokenBalanceBeforeWithdraw;
 
         if (otherTokenReceivedFromLp > 0) {
-            ERC20(_OTHER_TOKEN).forceApprove(_POOL, otherTokenReceivedFromLp);
-
+            // ERC20(_OTHER_TOKEN).forceApprove(_POOL, otherTokenReceivedFromLp); // Approval not needed due to callback payment model
             bytes memory data = abi.encode(address(_OTHER_TOKEN));
 
             if (_ASSET_IS_TOKEN_0) {
