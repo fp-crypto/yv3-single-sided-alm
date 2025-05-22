@@ -21,6 +21,11 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
 
+    struct SwapCallbackData {
+        address tokenToPay;
+        uint256 amountToPay; // The amount the strategy intends to pay
+    }
+
     constructor(
         address _asset,
         string memory _name,
@@ -226,7 +231,8 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             );
         } else {
             // asset.forceApprove(_POOL, amountToSwap);
-            bytes memory data = abi.encode(address(asset));
+            SwapCallbackData memory callbackData = SwapCallbackData(address(asset), amountToSwap);
+            bytes memory data = abi.encode(callbackData);
 
             if (_ASSET_IS_TOKEN_0) {
                 IUniswapV3Pool(_POOL).swap(
@@ -310,7 +316,8 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         ) - otherTokenBalanceBeforeWithdraw;
 
         if (otherTokenReceivedFromLp > 0) {
-            bytes memory data = abi.encode(address(_OTHER_TOKEN));
+            SwapCallbackData memory callbackData = SwapCallbackData(address(_OTHER_TOKEN), otherTokenReceivedFromLp);
+            bytes memory data = abi.encode(callbackData);
 
             if (_ASSET_IS_TOKEN_0) {
                 // Selling _OTHER_TOKEN (token1) for asset (token0)
@@ -342,46 +349,34 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     ) external override {
         require(msg.sender == _POOL, "Strategy: Invalid caller");
 
-        address tokenToPay = abi.decode(_data, (address));
+        SwapCallbackData memory cbData = abi.decode(_data, (SwapCallbackData));
+        uint256 actualAmountPaidByStrategy;
 
         if (_ASSET_IS_TOKEN_0) {
             // asset is token0, _OTHER_TOKEN is token1
-            if (tokenToPay == address(asset)) {
-                // Paying token0 (asset)
-                require(
-                    amount0Delta < 0,
-                    "Strategy: amount0Delta should be < 0 for asset payment"
-                );
-                asset.safeTransfer(_POOL, uint256(-amount0Delta));
-            } else if (tokenToPay == _OTHER_TOKEN) {
-                // Paying token1 (_OTHER_TOKEN)
-                require(
-                    amount1Delta < 0,
-                    "Strategy: amount1Delta should be < 0 for other token payment"
-                );
-                ERC20(_OTHER_TOKEN).safeTransfer(_POOL, uint256(-amount1Delta));
+            if (cbData.tokenToPay == address(asset)) { // Paying token0 (asset)
+                require(amount0Delta < 0, "Strategy: amount0Delta should be < 0 for asset payment");
+                actualAmountPaidByStrategy = uint256(-amount0Delta);
+            } else if (cbData.tokenToPay == _OTHER_TOKEN) { // Paying token1 (_OTHER_TOKEN)
+                require(amount1Delta < 0, "Strategy: amount1Delta should be < 0 for other token payment");
+                actualAmountPaidByStrategy = uint256(-amount1Delta);
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         } else {
             // asset is token1, _OTHER_TOKEN is token0
-            if (tokenToPay == address(asset)) {
-                // Paying token1 (asset)
-                require(
-                    amount1Delta < 0,
-                    "Strategy: amount1Delta should be < 0 for asset payment"
-                );
-                asset.safeTransfer(_POOL, uint256(-amount1Delta));
-            } else if (tokenToPay == _OTHER_TOKEN) {
-                // Paying token0 (_OTHER_TOKEN)
-                require(
-                    amount0Delta < 0,
-                    "Strategy: amount0Delta should be < 0 for other token payment"
-                );
-                ERC20(_OTHER_TOKEN).safeTransfer(_POOL, uint256(-amount0Delta));
+            if (cbData.tokenToPay == address(asset)) { // Paying token1 (asset)
+                require(amount1Delta < 0, "Strategy: amount1Delta should be < 0 for asset payment");
+                actualAmountPaidByStrategy = uint256(-amount1Delta);
+            } else if (cbData.tokenToPay == _OTHER_TOKEN) { // Paying token0 (_OTHER_TOKEN)
+                require(amount0Delta < 0, "Strategy: amount0Delta should be < 0 for other token payment");
+                actualAmountPaidByStrategy = uint256(-amount0Delta);
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         }
+        
+        require(actualAmountPaidByStrategy == cbData.amountToPay, "Strategy: Paid amount mismatch");
+        ERC20(cbData.tokenToPay).safeTransfer(_POOL, actualAmountPaidByStrategy);
     }
 }
