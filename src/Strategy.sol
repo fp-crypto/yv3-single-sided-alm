@@ -65,6 +65,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         override
         returns (uint256 _totalAssets)
     {
+        // TODO: position adjustments?
         _totalAssets = asset.balanceOf(address(this)) + lpVaultInAsset();
     }
 
