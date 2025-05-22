@@ -151,17 +151,12 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     // @inheritdoc BaseStrategy
     function _emergencyWithdraw(uint256 _amount) internal override {}
 
-    function _depositInLp() internal {
-        uint256 assetBalance = asset.balanceOf(address(this));
-        if (assetBalance == 0) {
-            return;
-        }
-
-        (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
-
-        uint256 amountToSwap;
-
+    function _calculateAmountToSwapForDeposit(
+        uint256 assetBalance,
+        uint256 total0InLp,
+        uint256 total1InLp,
+        uint160 sqrtPriceX96
+    ) internal view returns (uint256 amountToSwap) {
         if (total0InLp == 0 && total1InLp == 0) {
             amountToSwap = assetBalance / 2; // Fallback: LP is empty, aim for a 50/50 value split by swapping half the asset.
         } else {
@@ -206,6 +201,23 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                 );
             }
         }
+    }
+
+    function _depositInLp() internal {
+        uint256 assetBalance = asset.balanceOf(address(this));
+        if (assetBalance == 0) {
+            return;
+        }
+
+        (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+
+        uint256 amountToSwap = _calculateAmountToSwapForDeposit(
+            assetBalance,
+            total0InLp,
+            total1InLp,
+            sqrtPriceX96
+        );
 
         if (amountToSwap > assetBalance) amountToSwap = assetBalance;
 
