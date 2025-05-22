@@ -20,7 +20,7 @@ contract OperationTest is Setup {
     }
 
     function test_operation(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -43,6 +43,9 @@ contract OperationTest is Setup {
 
         skip(strategy.profitMaxUnlockTime());
 
+        vm.prank(management);
+        strategy.emergencyWithdraw(type(uint256).max);
+
         uint256 balanceBefore = asset.balanceOf(user);
 
         // Withdraw all funds
@@ -60,7 +63,7 @@ contract OperationTest is Setup {
         uint256 _amount,
         uint16 _profitFactor
     ) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
 
         // Deposit into strategy
@@ -99,7 +102,7 @@ contract OperationTest is Setup {
     }
 
     function test_tendTrigger(uint256 _amount) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
 
         (bool trigger, ) = strategy.tendTrigger();
         assertTrue(!trigger);

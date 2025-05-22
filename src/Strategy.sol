@@ -102,19 +102,37 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         );
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
-        if (_ASSET_IS_TOKEN_0) { // asset is token0. Convert token1 to token0: myHoldingsToken1 / Price(token1/token0)
+        uint8 assetDecimals = asset.decimals();
+        uint8 otherTokenDecimals = ERC20(_OTHER_TOKEN).decimals();
+
+        if (_ASSET_IS_TOKEN_0) { // asset is token0 (e.g., USDC). Other is token1 (e.g., DAI).
+            // valueMyToken1InAssetTerms is value of DAI holdings in USDC (unscaled)
             uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken1, Q96, sqrtPriceX96), // Swapped logic
+                FullMath.mulDiv(myHoldingsToken1, Q96, sqrtPriceX96),
                 Q96,
                 sqrtPriceX96
             );
+            // Scale to asset's (token0) decimals
+            if (otherTokenDecimals > assetDecimals) { // e.g., DAI (18) > USDC (6)
+                valueMyToken1InAssetTerms /= (10**(otherTokenDecimals - assetDecimals));
+            } else if (assetDecimals > otherTokenDecimals) {
+                valueMyToken1InAssetTerms *= (10**(assetDecimals - otherTokenDecimals));
+            }
             valueLpInAssetTerms = myHoldingsToken0 + valueMyToken1InAssetTerms;
-        } else { // asset is token1. Convert token0 to token1: myHoldingsToken0 * Price(token1/token0)
+        } else { // asset is token1 (e.g., DAI). Other is token0 (e.g., USDC).
+            // valueMyToken0InAssetTerms is value of USDC holdings in DAI (unscaled)
             uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken0, sqrtPriceX96, Q96), // Swapped logic
+                FullMath.mulDiv(myHoldingsToken0, sqrtPriceX96, Q96),
                 sqrtPriceX96,
                 Q96
             );
+            // Scale to asset's (token1) decimals
+            if (otherTokenDecimals > assetDecimals) { // e.g. hypothetical other > DAI
+                // This case is not USDC > DAI, but included for completeness
+                valueMyToken0InAssetTerms /= (10**(otherTokenDecimals - assetDecimals));
+            } else if (assetDecimals > otherTokenDecimals) { // e.g., DAI (18) > USDC (6)
+                valueMyToken0InAssetTerms *= (10**(assetDecimals - otherTokenDecimals));
+            }
             valueLpInAssetTerms = myHoldingsToken1 + valueMyToken0InAssetTerms;
         }
     }
@@ -159,46 +177,55 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         if (total0InLp == 0 && total1InLp == 0) {
             amountToSwap = assetBalance / 2; // Fallback: LP is empty, aim for a 50/50 value split by swapping half the asset.
         } else {
-            uint256 valueLpHoldingOfOtherToken_inAssetTokenTerms;
-            uint256 totalLpValue_inAssetTokenTerms;
+            uint256 otherTokenValueInAsset;
+            uint256 totalLpValueInAsset;
+
+            uint8 assetDecimals = asset.decimals();
+            uint8 otherTokenDecimals = ERC20(_OTHER_TOKEN).decimals();
 
             if (_ASSET_IS_TOKEN_0) {
-                // Our asset is token0. The "other token" is token1.
-                // Calculate value of LP's token1 holdings, in terms of token0 (our asset).
-                // value = total1InLp / Price(token1/token0)
-                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv( // Swapped logic
+                // Asset is token0. Other token is token1.
+                // otherTokenValueInAsset is value of LP's token1 holdings, in terms of token0 (asset), unscaled.
+                otherTokenValueInAsset = FullMath.mulDiv(
                     FullMath.mulDiv(total1InLp, Q96, sqrtPriceX96),
                     Q96,
                     sqrtPriceX96
                 );
-                // Calculate total LP value in terms of token0 (our asset).
-                totalLpValue_inAssetTokenTerms =
-                    total0InLp +
-                    valueLpHoldingOfOtherToken_inAssetTokenTerms;
+                // Scale this value to asset's (token0) decimals.
+                if (otherTokenDecimals > assetDecimals) {
+                    otherTokenValueInAsset /= (10**(otherTokenDecimals - assetDecimals));
+                } else if (assetDecimals > otherTokenDecimals) {
+                    otherTokenValueInAsset *= (10**(assetDecimals - otherTokenDecimals));
+                }
+                // total0InLp is already in asset's (token0) decimals.
+                totalLpValueInAsset = total0InLp + otherTokenValueInAsset;
             } else {
-                // Our asset is token1. The "other token" is token0.
-                // Calculate value of LP's token0 holdings, in terms of token1 (our asset).
-                // value = total0InLp * Price(token1/token0)
-                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv( // Swapped logic
+                // Asset is token1. Other token is token0.
+                // otherTokenValueInAsset is value of LP's token0 holdings, in terms of token1 (asset), unscaled.
+                otherTokenValueInAsset = FullMath.mulDiv(
                     FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
                     sqrtPriceX96,
                     Q96
                 );
-                // Calculate total LP value in terms of token1 (our asset).
-                totalLpValue_inAssetTokenTerms =
-                    total1InLp +
-                    valueLpHoldingOfOtherToken_inAssetTokenTerms;
+                // Scale this value to asset's (token1) decimals.
+                if (otherTokenDecimals > assetDecimals) { // Should not happen if other is USDC and asset is DAI
+                    otherTokenValueInAsset /= (10**(otherTokenDecimals - assetDecimals));
+                } else if (assetDecimals > otherTokenDecimals) { // e.g. DAI (18) > USDC (6)
+                    otherTokenValueInAsset *= (10**(assetDecimals - otherTokenDecimals));
+                }
+                // total1InLp is already in asset's (token1) decimals.
+                totalLpValueInAsset = total1InLp + otherTokenValueInAsset;
             }
 
-            if (totalLpValue_inAssetTokenTerms == 0) {
+            if (totalLpValueInAsset == 0) {
                 amountToSwap = assetBalance / 2; // Fallback: Total LP value is zero, aim for 50/50.
             } else {
                 // Calculate how much of our asset to swap to get the "other token"
                 // in proportion to its value representation in the LP.
                 amountToSwap = FullMath.mulDiv(
                     assetBalance,
-                    valueLpHoldingOfOtherToken_inAssetTokenTerms,
-                    totalLpValue_inAssetTokenTerms
+                    otherTokenValueInAsset,
+                    totalLpValueInAsset
                 );
             }
         }
@@ -244,7 +271,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     address(this),
                     true, // zeroForOne: true (selling asset (token0) for _OTHER_TOKEN (token1))
                     int256(amountToSwap),
-                    TickMath.MAX_SQRT_RATIO - 1, // Allow to sell token0 until price hits max
+                    TickMath.MIN_SQRT_RATIO + 1, // Price limit for selling token0 for token1
                     data
                 );
             } else {
@@ -252,7 +279,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     address(this),
                     false, // zeroForOne: false (selling asset (token1) for _OTHER_TOKEN (token0))
                     int256(amountToSwap),
-                    TickMath.MIN_SQRT_RATIO + 1, // Allow to sell token1 until price hits min
+                    TickMath.MAX_SQRT_RATIO - 1, // Price limit for selling token1 for token0
                     data
                 );
             }
@@ -288,52 +315,52 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         );
     }
 
-    function _withdrawFromLp(uint256 _amountAssetToWithdraw) internal {
-        if (_amountAssetToWithdraw == 0) return;
+    function _withdrawFromLp(uint256 assetToWithdraw) internal {
+        if (assetToWithdraw == 0) return;
 
         uint256 myShares = STEER_LP.balanceOf(address(this));
         if (myShares == 0) return;
 
-        uint256 totalValueOfMyHoldingsInAssetTerms = lpVaultInAsset();
-        if (totalValueOfMyHoldingsInAssetTerms == 0) return;
+        uint256 myHoldingsValueInAsset = lpVaultInAsset();
+        if (myHoldingsValueInAsset == 0) return;
 
         uint256 sharesToWithdraw;
-        if (_amountAssetToWithdraw >= totalValueOfMyHoldingsInAssetTerms) {
+        if (assetToWithdraw >= myHoldingsValueInAsset) {
             sharesToWithdraw = myShares;
         } else {
             sharesToWithdraw = FullMath.mulDiv(
-                _amountAssetToWithdraw,
+                assetToWithdraw,
                 myShares,
-                totalValueOfMyHoldingsInAssetTerms
+                myHoldingsValueInAsset
             );
         }
 
         if (sharesToWithdraw == 0) return;
 
-        uint256 otherTokenBalanceBeforeWithdraw = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 otherTokenBalanceBefore = ERC20(_OTHER_TOKEN).balanceOf(
             address(this)
         );
 
         STEER_LP.withdraw(sharesToWithdraw, 0, 0, address(this));
 
-        uint256 otherTokenReceivedFromLp = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 otherTokenFromLp = ERC20(_OTHER_TOKEN).balanceOf(
             address(this)
-        ) - otherTokenBalanceBeforeWithdraw;
+        ) - otherTokenBalanceBefore;
 
-        if (otherTokenReceivedFromLp > 0) {
-            SwapCallbackData memory callbackData = SwapCallbackData(
+        if (otherTokenFromLp > 0) {
+            SwapCallbackData memory callbackData = SwapCallbackData( // Renamed cbData to callbackData
                 address(_OTHER_TOKEN),
-                otherTokenReceivedFromLp
+                otherTokenFromLp
             );
-            bytes memory data = abi.encode(callbackData);
+            bytes memory data = abi.encode(callbackData); // Use renamed callbackData
 
             if (_ASSET_IS_TOKEN_0) {
                 // Selling _OTHER_TOKEN (token1) for asset (token0)
                 IUniswapV3Pool(_POOL).swap(
                     address(this),
                     false, // zeroForOne is false (token1 -> token0)
-                    int256(otherTokenReceivedFromLp),
-                    TickMath.MIN_SQRT_RATIO + 1, // Price limit for selling token1 for token0
+                    int256(otherTokenFromLp),
+                    TickMath.MAX_SQRT_RATIO - 1, // Price limit for selling token1 for token0
                     data
                 );
             } else {
@@ -341,8 +368,8 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                 IUniswapV3Pool(_POOL).swap(
                     address(this),
                     true, // zeroForOne is true (token0 -> token1)
-                    int256(otherTokenReceivedFromLp),
-                    TickMath.MAX_SQRT_RATIO - 1, // Price limit for selling token0 for token1
+                    int256(otherTokenFromLp),
+                    TickMath.MIN_SQRT_RATIO + 1, // Price limit for selling token0 for token1
                     data
                 );
             }
@@ -357,35 +384,35 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     ) external override {
         require(msg.sender == _POOL, "Strategy: Invalid caller");
 
-        SwapCallbackData memory cbData = abi.decode(_data, (SwapCallbackData));
-        uint256 actualAmountPaidByStrategy;
+        SwapCallbackData memory callbackData = abi.decode(_data, (SwapCallbackData));
+        uint256 amountPaid;
 
         if (_ASSET_IS_TOKEN_0) {
             // asset is token0, _OTHER_TOKEN is token1
-            if (cbData.tokenToPay == address(asset)) {
+            if (callbackData.tokenToPay == address(asset)) {
                 // Paying token0 (asset) to pool
                 require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
-                actualAmountPaidByStrategy = uint256(amount0Delta);
+                amountPaid = uint256(amount0Delta);
                 require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
-            } else if (cbData.tokenToPay == _OTHER_TOKEN) {
+            } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
                 // Paying token1 (_OTHER_TOKEN) to pool
                 require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
-                actualAmountPaidByStrategy = uint256(amount1Delta);
+                amountPaid = uint256(amount1Delta);
                 require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         } else {
             // asset is token1, _OTHER_TOKEN is token0
-            if (cbData.tokenToPay == address(asset)) {
+            if (callbackData.tokenToPay == address(asset)) {
                 // Paying token1 (asset) to pool
                 require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
-                actualAmountPaidByStrategy = uint256(amount1Delta);
+                amountPaid = uint256(amount1Delta);
                 require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
-            } else if (cbData.tokenToPay == _OTHER_TOKEN) {
+            } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
                 // Paying token0 (_OTHER_TOKEN) to pool
                 require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
-                actualAmountPaidByStrategy = uint256(amount0Delta);
+                amountPaid = uint256(amount0Delta);
                 require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
@@ -393,12 +420,12 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         }
 
         require(
-            actualAmountPaidByStrategy == cbData.amountToPay,
+            amountPaid == callbackData.amountToPay,
             "Strategy: Paid amount mismatch"
         );
-        ERC20(cbData.tokenToPay).safeTransfer(
+        ERC20(callbackData.tokenToPay).safeTransfer(
             _POOL,
-            actualAmountPaidByStrategy
+            amountPaid
         );
     }
 }
