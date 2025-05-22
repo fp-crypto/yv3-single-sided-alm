@@ -21,7 +21,6 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
 
-
     constructor(
         address _asset,
         string memory _name,
@@ -73,30 +72,56 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    function lpVaultInAsset() public view returns (uint256 valueLpInAssetTerms) {
+    function lpVaultInAsset()
+        public
+        view
+        returns (uint256 valueLpInAssetTerms)
+    {
         uint256 myShares = STEER_LP.balanceOf(address(this));
 
         if (myShares > 0) {
-            (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
+            (uint256 total0InLp, uint256 total1InLp) = STEER_LP
+                .getTotalAmounts();
             uint256 totalLpShares = STEER_LP.totalSupply();
 
             if (totalLpShares > 0) {
-                uint256 myHoldingsToken0 = FullMath.mulDiv(myShares, total0InLp, totalLpShares);
-                uint256 myHoldingsToken1 = FullMath.mulDiv(myShares, total1InLp, totalLpShares);
-                (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+                uint256 myHoldingsToken0 = FullMath.mulDiv(
+                    myShares,
+                    total0InLp,
+                    totalLpShares
+                );
+                uint256 myHoldingsToken1 = FullMath.mulDiv(
+                    myShares,
+                    total1InLp,
+                    totalLpShares
+                );
+                (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL)
+                    .slot0();
 
                 if (_ASSET_IS_TOKEN_0) {
-                    uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(FullMath.mulDiv(myHoldingsToken1, sqrtPriceX96, Q96), sqrtPriceX96, Q96);
-                    valueLpInAssetTerms = myHoldingsToken0 + valueMyToken1InAssetTerms;
+                    uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(
+                        FullMath.mulDiv(myHoldingsToken1, sqrtPriceX96, Q96),
+                        sqrtPriceX96,
+                        Q96
+                    );
+                    valueLpInAssetTerms =
+                        myHoldingsToken0 +
+                        valueMyToken1InAssetTerms;
                 } else {
-                    uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(FullMath.mulDiv(myHoldingsToken0, Q96, sqrtPriceX96), Q96, sqrtPriceX96);
-                    valueLpInAssetTerms = myHoldingsToken1 + valueMyToken0InAssetTerms;
+                    uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(
+                        FullMath.mulDiv(myHoldingsToken0, Q96, sqrtPriceX96),
+                        Q96,
+                        sqrtPriceX96
+                    );
+                    valueLpInAssetTerms =
+                        myHoldingsToken1 +
+                        valueMyToken0InAssetTerms;
                 }
             }
         }
         // If no shares, or totalLpShares is 0, valueLpInAssetTerms remains 0, which is correct.
     }
-    
+
     // @inheritdoc BaseStrategy
     // @dev only return the loose asset balance
     function availableWithdrawLimit(
@@ -146,15 +171,27 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             if (_ASSET_IS_TOKEN_0) {
                 // Our asset is token0. The "other token" is token1.
                 // Calculate value of LP's token1 holdings, in terms of token0 (our asset).
-                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(FullMath.mulDiv(total1InLp, sqrtPriceX96, Q96), sqrtPriceX96, Q96);
+                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(
+                    FullMath.mulDiv(total1InLp, sqrtPriceX96, Q96),
+                    sqrtPriceX96,
+                    Q96
+                );
                 // Calculate total LP value in terms of token0 (our asset).
-                totalLpValue_inAssetTokenTerms = total0InLp + valueLpHoldingOfOtherToken_inAssetTokenTerms;
+                totalLpValue_inAssetTokenTerms =
+                    total0InLp +
+                    valueLpHoldingOfOtherToken_inAssetTokenTerms;
             } else {
                 // Our asset is token1. The "other token" is token0.
                 // Calculate value of LP's token0 holdings, in terms of token1 (our asset).
-                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(FullMath.mulDiv(total0InLp, Q96, sqrtPriceX96), Q96, sqrtPriceX96);
+                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(
+                    FullMath.mulDiv(total0InLp, Q96, sqrtPriceX96),
+                    Q96,
+                    sqrtPriceX96
+                );
                 // Calculate total LP value in terms of token1 (our asset).
-                totalLpValue_inAssetTokenTerms = total1InLp + valueLpHoldingOfOtherToken_inAssetTokenTerms;
+                totalLpValue_inAssetTokenTerms =
+                    total1InLp +
+                    valueLpHoldingOfOtherToken_inAssetTokenTerms;
             }
 
             if (totalLpValue_inAssetTokenTerms == 0) {
@@ -162,15 +199,20 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             } else {
                 // Calculate how much of our asset to swap to get the "other token"
                 // in proportion to its value representation in the LP.
-                amountToSwap = FullMath.mulDiv(assetBalance, valueLpHoldingOfOtherToken_inAssetTokenTerms, totalLpValue_inAssetTokenTerms);
+                amountToSwap = FullMath.mulDiv(
+                    assetBalance,
+                    valueLpHoldingOfOtherToken_inAssetTokenTerms,
+                    totalLpValue_inAssetTokenTerms
+                );
             }
         }
-        
+
         if (amountToSwap > assetBalance) amountToSwap = assetBalance; // Cap swap amount
-        if (amountToSwap == 0 && assetBalance > 0) { // No swap needed or possible, try to deposit as is
+        if (amountToSwap == 0 && assetBalance > 0) {
+            // No swap needed or possible, try to deposit as is
             asset.safeApprove(address(STEER_LP), 0);
             asset.safeApprove(address(STEER_LP), assetBalance);
-            ERC20(_OTHER_TOKEN).safeApprove(address(STEER_LP), 0); 
+            ERC20(_OTHER_TOKEN).safeApprove(address(STEER_LP), 0);
 
             uint256 amount0ToDeposit;
             uint256 amount1ToDeposit;
@@ -181,39 +223,47 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                 amount0ToDeposit = 0;
                 amount1ToDeposit = assetBalance;
             }
-            STEER_LP.deposit(amount0ToDeposit, amount1ToDeposit, 0, 0, address(this));
+            STEER_LP.deposit(
+                amount0ToDeposit,
+                amount1ToDeposit,
+                0,
+                0,
+                address(this)
+            );
             return;
         }
-         if (amountToSwap == 0 && assetBalance == 0) { // Should have been caught by initial check
-             return;
+        if (amountToSwap == 0 && assetBalance == 0) {
+            // Should have been caught by initial check
+            return;
         }
-
 
         asset.safeApprove(_POOL, 0);
         asset.safeApprove(_POOL, amountToSwap);
 
-        bytes memory data = abi.encode(address(asset)); 
+        bytes memory data = abi.encode(address(asset));
 
         if (_ASSET_IS_TOKEN_0) {
             IUniswapV3Pool(_POOL).swap(
-                address(this), 
-                true, 
-                int256(amountToSwap), 
-                sqrtPriceX96 - 1, 
+                address(this),
+                true,
+                int256(amountToSwap),
+                sqrtPriceX96 - 1,
                 data
             );
         } else {
             IUniswapV3Pool(_POOL).swap(
-                address(this), 
-                false, 
-                int256(amountToSwap), 
-                sqrtPriceX96 + 1, 
+                address(this),
+                false,
+                int256(amountToSwap),
+                sqrtPriceX96 + 1,
                 data
             );
         }
 
         uint256 remainingAssetBalance = asset.balanceOf(address(this));
-        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
 
         asset.safeApprove(address(STEER_LP), 0);
         asset.safeApprove(address(STEER_LP), remainingAssetBalance);
@@ -230,71 +280,107 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             amount0ToDeposit = otherTokenBalance;
             amount1ToDeposit = remainingAssetBalance;
         }
-        
-        STEER_LP.deposit(amount0ToDeposit, amount1ToDeposit, 0, 0, address(this));
+
+        STEER_LP.deposit(
+            amount0ToDeposit,
+            amount1ToDeposit,
+            0,
+            0,
+            address(this)
+        );
     }
 
     function _withdrawFromLp(uint256 _amountAssetToWithdraw) internal {
         if (_amountAssetToWithdraw == 0) return;
 
         uint256 myShares = STEER_LP.balanceOf(address(this));
-        if (myShares == 0) return; 
+        if (myShares == 0) return;
 
         (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
         uint256 totalLpShares = STEER_LP.totalSupply();
 
-        if (totalLpShares == 0) return; 
+        if (totalLpShares == 0) return;
 
-        uint256 myHoldingsToken0 = FullMath.mulDiv(myShares, total0InLp, totalLpShares);
-        uint256 myHoldingsToken1 = FullMath.mulDiv(myShares, total1InLp, totalLpShares);
+        uint256 myHoldingsToken0 = FullMath.mulDiv(
+            myShares,
+            total0InLp,
+            totalLpShares
+        );
+        uint256 myHoldingsToken1 = FullMath.mulDiv(
+            myShares,
+            total1InLp,
+            totalLpShares
+        );
 
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
         uint256 totalValueOfMyHoldingsInAssetTerms;
         if (_ASSET_IS_TOKEN_0) {
-            uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(FullMath.mulDiv(myHoldingsToken1, sqrtPriceX96, Q96), sqrtPriceX96, Q96);
-            totalValueOfMyHoldingsInAssetTerms = myHoldingsToken0 + valueMyToken1InAssetTerms;
+            uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(
+                FullMath.mulDiv(myHoldingsToken1, sqrtPriceX96, Q96),
+                sqrtPriceX96,
+                Q96
+            );
+            totalValueOfMyHoldingsInAssetTerms =
+                myHoldingsToken0 +
+                valueMyToken1InAssetTerms;
         } else {
-            uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(FullMath.mulDiv(myHoldingsToken0, Q96, sqrtPriceX96), Q96, sqrtPriceX96);
-            totalValueOfMyHoldingsInAssetTerms = myHoldingsToken1 + valueMyToken0InAssetTerms;
+            uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(
+                FullMath.mulDiv(myHoldingsToken0, Q96, sqrtPriceX96),
+                Q96,
+                sqrtPriceX96
+            );
+            totalValueOfMyHoldingsInAssetTerms =
+                myHoldingsToken1 +
+                valueMyToken0InAssetTerms;
         }
 
         if (totalValueOfMyHoldingsInAssetTerms == 0) return;
 
         uint256 sharesToWithdraw;
         if (_amountAssetToWithdraw >= totalValueOfMyHoldingsInAssetTerms) {
-            sharesToWithdraw = myShares; 
+            sharesToWithdraw = myShares;
         } else {
-            sharesToWithdraw = FullMath.mulDiv(_amountAssetToWithdraw, myShares, totalValueOfMyHoldingsInAssetTerms);
+            sharesToWithdraw = FullMath.mulDiv(
+                _amountAssetToWithdraw,
+                myShares,
+                totalValueOfMyHoldingsInAssetTerms
+            );
         }
 
         if (sharesToWithdraw == 0) return;
 
-        uint256 otherTokenBalanceBeforeWithdraw = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+        uint256 otherTokenBalanceBeforeWithdraw = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
 
         STEER_LP.withdraw(sharesToWithdraw, 0, 0, address(this));
 
-        uint256 otherTokenReceivedFromLp = ERC20(_OTHER_TOKEN).balanceOf(address(this)) - otherTokenBalanceBeforeWithdraw;
+        uint256 otherTokenReceivedFromLp = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        ) - otherTokenBalanceBeforeWithdraw;
 
         if (otherTokenReceivedFromLp > 0) {
             ERC20(_OTHER_TOKEN).safeApprove(_POOL, 0);
             ERC20(_OTHER_TOKEN).safeApprove(_POOL, otherTokenReceivedFromLp);
 
-            bytes memory data = abi.encode(address(_OTHER_TOKEN)); 
+            bytes memory data = abi.encode(address(_OTHER_TOKEN));
 
-            if (_ASSET_IS_TOKEN_0) { // Selling _OTHER_TOKEN (token1) for asset (token0)
+            if (_ASSET_IS_TOKEN_0) {
+                // Selling _OTHER_TOKEN (token1) for asset (token0)
                 IUniswapV3Pool(_POOL).swap(
-                    address(this),              
-                    false, // zeroForOne is false (token1 -> token0)                      
-                    int256(otherTokenReceivedFromLp), 
+                    address(this),
+                    false, // zeroForOne is false (token1 -> token0)
+                    int256(otherTokenReceivedFromLp),
                     TickMath.MIN_SQRT_RATIO + 1, // Price limit for selling token1 for token0
                     data
                 );
-            } else { // Selling _OTHER_TOKEN (token0) for asset (token1)
+            } else {
+                // Selling _OTHER_TOKEN (token0) for asset (token1)
                 IUniswapV3Pool(_POOL).swap(
-                    address(this),              
-                    true, // zeroForOne is true (token0 -> token1)                       
-                    int256(otherTokenReceivedFromLp), 
+                    address(this),
+                    true, // zeroForOne is true (token0 -> token1)
+                    int256(otherTokenReceivedFromLp),
                     TickMath.MAX_SQRT_RATIO - 1, // Price limit for selling token0 for token1
                     data
                 );
@@ -313,22 +399,38 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
 
         if (_ASSET_IS_TOKEN_0) {
             // asset is token0, _OTHER_TOKEN is token1
-            if (tokenToPay == address(asset)) { // Paying token0 (asset)
-                require(amount0Delta < 0, "Strategy: amount0Delta should be < 0 for asset payment");
+            if (tokenToPay == address(asset)) {
+                // Paying token0 (asset)
+                require(
+                    amount0Delta < 0,
+                    "Strategy: amount0Delta should be < 0 for asset payment"
+                );
                 asset.safeTransfer(_POOL, uint256(-amount0Delta));
-            } else if (tokenToPay == _OTHER_TOKEN) { // Paying token1 (_OTHER_TOKEN)
-                require(amount1Delta < 0, "Strategy: amount1Delta should be < 0 for other token payment");
+            } else if (tokenToPay == _OTHER_TOKEN) {
+                // Paying token1 (_OTHER_TOKEN)
+                require(
+                    amount1Delta < 0,
+                    "Strategy: amount1Delta should be < 0 for other token payment"
+                );
                 ERC20(_OTHER_TOKEN).safeTransfer(_POOL, uint256(-amount1Delta));
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         } else {
             // asset is token1, _OTHER_TOKEN is token0
-            if (tokenToPay == address(asset)) { // Paying token1 (asset)
-                require(amount1Delta < 0, "Strategy: amount1Delta should be < 0 for asset payment");
+            if (tokenToPay == address(asset)) {
+                // Paying token1 (asset)
+                require(
+                    amount1Delta < 0,
+                    "Strategy: amount1Delta should be < 0 for asset payment"
+                );
                 asset.safeTransfer(_POOL, uint256(-amount1Delta));
-            } else if (tokenToPay == _OTHER_TOKEN) { // Paying token0 (_OTHER_TOKEN)
-                require(amount0Delta < 0, "Strategy: amount0Delta should be < 0 for other token payment");
+            } else if (tokenToPay == _OTHER_TOKEN) {
+                // Paying token0 (_OTHER_TOKEN)
+                require(
+                    amount0Delta < 0,
+                    "Strategy: amount0Delta should be < 0 for other token payment"
+                );
                 ERC20(_OTHER_TOKEN).safeTransfer(_POOL, uint256(-amount0Delta));
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
