@@ -244,7 +244,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     address(this),
                     true, // zeroForOne: true (selling asset (token0) for _OTHER_TOKEN (token1))
                     int256(amountToSwap),
-                    sqrtPriceX96 - 1, // Price limit for selling token0
+                    TickMath.MAX_SQRT_RATIO - 1, // Allow to sell token0 until price hits max
                     data
                 );
             } else {
@@ -252,7 +252,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     address(this),
                     false, // zeroForOne: false (selling asset (token1) for _OTHER_TOKEN (token0))
                     int256(amountToSwap),
-                    sqrtPriceX96 + 1, // Price limit for selling token1
+                    TickMath.MIN_SQRT_RATIO + 1, // Allow to sell token1 until price hits min
                     data
                 );
             }
@@ -363,38 +363,30 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         if (_ASSET_IS_TOKEN_0) {
             // asset is token0, _OTHER_TOKEN is token1
             if (cbData.tokenToPay == address(asset)) {
-                // Paying token0 (asset)
-                require(
-                    amount0Delta < 0,
-                    "Strategy: amount0Delta should be < 0 for asset payment"
-                );
-                actualAmountPaidByStrategy = uint256(-amount0Delta);
+                // Paying token0 (asset) to pool
+                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
+                actualAmountPaidByStrategy = uint256(amount0Delta);
+                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
             } else if (cbData.tokenToPay == _OTHER_TOKEN) {
-                // Paying token1 (_OTHER_TOKEN)
-                require(
-                    amount1Delta < 0,
-                    "Strategy: amount1Delta should be < 0 for other token payment"
-                );
-                actualAmountPaidByStrategy = uint256(-amount1Delta);
+                // Paying token1 (_OTHER_TOKEN) to pool
+                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
+                actualAmountPaidByStrategy = uint256(amount1Delta);
+                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         } else {
             // asset is token1, _OTHER_TOKEN is token0
             if (cbData.tokenToPay == address(asset)) {
-                // Paying token1 (asset)
-                require(
-                    amount1Delta < 0,
-                    "Strategy: amount1Delta should be < 0 for asset payment"
-                );
-                actualAmountPaidByStrategy = uint256(-amount1Delta);
+                // Paying token1 (asset) to pool
+                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
+                actualAmountPaidByStrategy = uint256(amount1Delta);
+                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
             } else if (cbData.tokenToPay == _OTHER_TOKEN) {
-                // Paying token0 (_OTHER_TOKEN)
-                require(
-                    amount0Delta < 0,
-                    "Strategy: amount0Delta should be < 0 for other token payment"
-                );
-                actualAmountPaidByStrategy = uint256(-amount0Delta);
+                // Paying token0 (_OTHER_TOKEN) to pool
+                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
+                actualAmountPaidByStrategy = uint256(amount0Delta);
+                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
