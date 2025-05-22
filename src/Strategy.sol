@@ -208,86 +208,57 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         }
 
         if (amountToSwap > assetBalance) amountToSwap = assetBalance; // Cap swap amount
-        if (amountToSwap == 0 && assetBalance > 0) {
-            // No swap needed or possible, try to deposit as is
-            asset.safeApprove(address(STEER_LP), 0);
-            asset.safeApprove(address(STEER_LP), assetBalance);
-            ERC20(_OTHER_TOKEN).safeApprove(address(STEER_LP), 0);
 
-            uint256 amount0ToDeposit;
-            uint256 amount1ToDeposit;
-            if (_ASSET_IS_TOKEN_0) {
-                amount0ToDeposit = assetBalance;
-                amount1ToDeposit = 0;
-            } else {
-                amount0ToDeposit = 0;
-                amount1ToDeposit = assetBalance;
-            }
-            STEER_LP.deposit(
-                amount0ToDeposit,
-                amount1ToDeposit,
-                0,
-                0,
-                address(this)
-            );
-            return;
-        }
-        if (amountToSwap == 0 && assetBalance == 0) {
-            // Should have been caught by initial check
-            return;
-        }
+        uint256 finalAssetBalanceForDeposit;
+        uint256 finalOtherTokenBalanceForDeposit;
 
-        asset.safeApprove(_POOL, 0);
-        asset.safeApprove(_POOL, amountToSwap);
-
-        bytes memory data = abi.encode(address(asset));
-
-        if (_ASSET_IS_TOKEN_0) {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                true,
-                int256(amountToSwap),
-                sqrtPriceX96 - 1,
-                data
-            );
+        if (amountToSwap == 0) {
+            // No swap needed. We will deposit the existing assetBalance.
+            // Assume _OTHER_TOKEN balance is 0 or irrelevant if not swapping.
+            finalAssetBalanceForDeposit = assetBalance;
+            finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this)); // Use current balance if any
         } else {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                false,
-                int256(amountToSwap),
-                sqrtPriceX96 + 1,
-                data
-            );
+            // Perform swap
+            asset.forceApprove(_POOL, amountToSwap);
+            bytes memory data = abi.encode(address(asset));
+
+            if (_ASSET_IS_TOKEN_0) {
+                IUniswapV3Pool(_POOL).swap(
+                    address(this),
+                    true, // zeroForOne: true (selling asset (token0) for _OTHER_TOKEN (token1))
+                    int256(amountToSwap),
+                    sqrtPriceX96 - 1, // Price limit for selling token0
+                    data
+                );
+            } else {
+                IUniswapV3Pool(_POOL).swap(
+                    address(this),
+                    false, // zeroForOne: false (selling asset (token1) for _OTHER_TOKEN (token0))
+                    int256(amountToSwap),
+                    sqrtPriceX96 + 1, // Price limit for selling token1
+                    data
+                );
+            }
+            finalAssetBalanceForDeposit = asset.balanceOf(address(this));
+            finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
         }
 
-        uint256 remainingAssetBalance = asset.balanceOf(address(this));
-        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
-            address(this)
-        );
-
-        asset.safeApprove(address(STEER_LP), 0);
-        asset.safeApprove(address(STEER_LP), remainingAssetBalance);
-        ERC20(_OTHER_TOKEN).safeApprove(address(STEER_LP), 0);
-        ERC20(_OTHER_TOKEN).safeApprove(address(STEER_LP), otherTokenBalance);
+        // Approve STEER_LP for the balances to be deposited
+        asset.forceApprove(address(STEER_LP), finalAssetBalanceForDeposit);
+        ERC20(_OTHER_TOKEN).forceApprove(address(STEER_LP), finalOtherTokenBalanceForDeposit);
 
         uint256 amount0ToDeposit;
         uint256 amount1ToDeposit;
 
         if (_ASSET_IS_TOKEN_0) {
-            amount0ToDeposit = remainingAssetBalance;
-            amount1ToDeposit = otherTokenBalance;
+            amount0ToDeposit = finalAssetBalanceForDeposit;
+            amount1ToDeposit = finalOtherTokenBalanceForDeposit;
         } else {
-            amount0ToDeposit = otherTokenBalance;
-            amount1ToDeposit = remainingAssetBalance;
+            amount0ToDeposit = finalOtherTokenBalanceForDeposit;
+            amount1ToDeposit = finalAssetBalanceForDeposit;
         }
 
-        STEER_LP.deposit(
-            amount0ToDeposit,
-            amount1ToDeposit,
-            0,
-            0,
-            address(this)
-        );
+        STEER_LP.deposit(amount0ToDeposit, amount1ToDeposit, 0, 0, address(this));
     }
 
     function _withdrawFromLp(uint256 _amountAssetToWithdraw) internal {
@@ -361,8 +332,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         ) - otherTokenBalanceBeforeWithdraw;
 
         if (otherTokenReceivedFromLp > 0) {
-            ERC20(_OTHER_TOKEN).safeApprove(_POOL, 0);
-            ERC20(_OTHER_TOKEN).safeApprove(_POOL, otherTokenReceivedFromLp);
+            ERC20(_OTHER_TOKEN).forceApprove(_POOL, otherTokenReceivedFromLp);
 
             bytes memory data = abi.encode(address(_OTHER_TOKEN));
 
