@@ -221,13 +221,13 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
 
         if (amountToSwap > assetBalance) amountToSwap = assetBalance;
 
-        uint256 finalAssetBalanceForDeposit;
-        uint256 finalOtherTokenBalanceForDeposit;
+        uint256 assetBalanceForDeposit;
+        uint256 otherTokenBalanceForDeposit;
 
         if (amountToSwap == 0) {
             // Assume _OTHER_TOKEN balance is 0 or irrelevant if not swapping.
-            finalAssetBalanceForDeposit = assetBalance;
-            finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+            assetBalanceForDeposit = assetBalance;
+            otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
         } else {
             // asset.forceApprove(_POOL, amountToSwap); // Approval not needed due to callback payment model
             bytes memory data = abi.encode(address(asset));
@@ -249,22 +249,22 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     data
                 );
             }
-            finalAssetBalanceForDeposit = asset.balanceOf(address(this));
-            finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+            assetBalanceForDeposit = asset.balanceOf(address(this));
+            otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
         }
 
-        asset.forceApprove(address(STEER_LP), finalAssetBalanceForDeposit);
-        ERC20(_OTHER_TOKEN).forceApprove(address(STEER_LP), finalOtherTokenBalanceForDeposit);
+        asset.forceApprove(address(STEER_LP), assetBalanceForDeposit);
+        ERC20(_OTHER_TOKEN).forceApprove(address(STEER_LP), otherTokenBalanceForDeposit);
 
         uint256 amount0ToDeposit;
         uint256 amount1ToDeposit;
 
         if (_ASSET_IS_TOKEN_0) {
-            amount0ToDeposit = finalAssetBalanceForDeposit;
-            amount1ToDeposit = finalOtherTokenBalanceForDeposit;
+            amount0ToDeposit = assetBalanceForDeposit;
+            amount1ToDeposit = otherTokenBalanceForDeposit;
         } else {
-            amount0ToDeposit = finalOtherTokenBalanceForDeposit;
-            amount1ToDeposit = finalAssetBalanceForDeposit;
+            amount0ToDeposit = otherTokenBalanceForDeposit;
+            amount1ToDeposit = assetBalanceForDeposit;
         }
 
         STEER_LP.deposit(amount0ToDeposit, amount1ToDeposit, 0, 0, address(this));
