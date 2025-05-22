@@ -23,6 +23,7 @@ contract Setup is ExtendedTest, IEvents {
     // Contract instances that we will use repeatedly.
     ERC20 public asset;
     IStrategyInterface public strategy;
+    address public lp;
 
     StrategyFactory public strategyFactory;
 
@@ -54,6 +55,7 @@ contract Setup is ExtendedTest, IEvents {
 
         // Set asset
         asset = ERC20(tokenAddrs["DAI"]);
+        lp = tokenAddrs["steerDAIUSDC"];
 
         // Set decimals
         decimals = asset.decimals();
@@ -85,7 +87,8 @@ contract Setup is ExtendedTest, IEvents {
             address(
                 strategyFactory.newStrategy(
                     address(asset),
-                    "Tokenized Strategy"
+                    "Tokenized Strategy",
+                    lp
                 )
             )
         );
@@ -156,12 +159,10 @@ contract Setup is ExtendedTest, IEvents {
     }
 
     function _setTokenAddrs() internal {
-        tokenAddrs["WBTC"] = 0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599;
-        tokenAddrs["YFI"] = 0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e;
         tokenAddrs["WETH"] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        tokenAddrs["LINK"] = 0x514910771AF9Ca656af840dff83E8264EcF986CA;
         tokenAddrs["USDT"] = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
-        tokenAddrs["DAI"] = 0x6B175474E89094C44Da98b954EedeAC495271d0F;
-        tokenAddrs["USDC"] = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+        tokenAddrs["DAI"] = 0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063;
+        tokenAddrs["USDC"] = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+        tokenAddrs["steerDAIUSDC"] = 0x77ce0a6ddCBb30d69015105726D106686a054719;
     }
 }

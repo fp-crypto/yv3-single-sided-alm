@@ -35,11 +35,12 @@ contract StrategyFactory {
      */
     function newStrategy(
         address _asset,
-        string calldata _name
+        string calldata _name,
+        address _steerLP
     ) external virtual returns (address) {
         // tokenized strategies available setters.
         IStrategyInterface _newStrategy = IStrategyInterface(
-            address(new Strategy(_asset, _name))
+            address(new Strategy(_asset, _name, _steerLP))
         );
 
         _newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
