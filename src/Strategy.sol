@@ -229,7 +229,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             assetBalanceForDeposit = assetBalance;
             otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
         } else {
-            // asset.forceApprove(_POOL, amountToSwap); // Approval not needed due to callback payment model
+            // asset.forceApprove(_POOL, amountToSwap);
             bytes memory data = abi.encode(address(asset));
 
             if (_ASSET_IS_TOKEN_0) {
