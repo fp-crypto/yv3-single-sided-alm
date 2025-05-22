@@ -282,45 +282,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         uint256 myShares = STEER_LP.balanceOf(address(this));
         if (myShares == 0) return;
 
-        (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
-        uint256 totalLpShares = STEER_LP.totalSupply();
-
-        if (totalLpShares == 0) return;
-
-        uint256 myHoldingsToken0 = FullMath.mulDiv(
-            myShares,
-            total0InLp,
-            totalLpShares
-        );
-        uint256 myHoldingsToken1 = FullMath.mulDiv(
-            myShares,
-            total1InLp,
-            totalLpShares
-        );
-
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
-
-        uint256 totalValueOfMyHoldingsInAssetTerms;
-        if (_ASSET_IS_TOKEN_0) {
-            uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken1, sqrtPriceX96, Q96),
-                sqrtPriceX96,
-                Q96
-            );
-            totalValueOfMyHoldingsInAssetTerms =
-                myHoldingsToken0 +
-                valueMyToken1InAssetTerms;
-        } else {
-            uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken0, Q96, sqrtPriceX96),
-                Q96,
-                sqrtPriceX96
-            );
-            totalValueOfMyHoldingsInAssetTerms =
-                myHoldingsToken1 +
-                valueMyToken0InAssetTerms;
-        }
-
+        uint256 totalValueOfMyHoldingsInAssetTerms = lpVaultInAsset();
         if (totalValueOfMyHoldingsInAssetTerms == 0) return;
 
         uint256 sharesToWithdraw;
