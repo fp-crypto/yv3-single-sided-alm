@@ -66,8 +66,15 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         override
         returns (uint256 _totalAssets)
     {
+        _totalAssets = asset.balanceOf(address(this)) + lpVaultInAsset();
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                    VIEW FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    function lpVaultInAsset() public view returns (uint256 valueLpInAssetTerms) {
         uint256 myShares = STEER_LP.balanceOf(address(this));
-        uint256 valueLpInAssetTerms;
 
         if (myShares > 0) {
             (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
@@ -87,9 +94,9 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                 }
             }
         }
-        _totalAssets = asset.balanceOf(address(this)) + valueLpInAssetTerms;
+        // If no shares, or totalLpShares is 0, valueLpInAssetTerms remains 0, which is correct.
     }
-
+    
     // @inheritdoc BaseStrategy
     // @dev only return the loose asset balance
     function availableWithdrawLimit(
