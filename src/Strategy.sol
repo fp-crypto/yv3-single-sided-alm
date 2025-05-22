@@ -104,46 +104,31 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         uint256 amountToSwap;
 
         if (total0InLp == 0 && total1InLp == 0) {
-            // TODO: Implement fallback logic
+            amountToSwap = assetBalance / 2; // Fallback: LP is empty, aim for a 50/50 value split by swapping half the asset.
         } else {
+            uint256 valueLpHoldingOfOtherToken_inAssetTokenTerms;
+            uint256 totalLpValue_inAssetTokenTerms;
+
             if (_ASSET_IS_TOKEN_0) {
-                // Asset is token0. We want to swap asset (token0) for _OTHER_TOKEN (token1).
-                // Calculate value of total0 and total1 in LP in terms of token0.
-                // value_total0_in_t0 = total0InLp
-                // value_total1_in_t0 = total1InLp * price_token1_in_token0
-                // price_token1_in_token0 = (sqrtPriceX96 / Q96)^2
-                // So, value_total1_in_t0 = total1InLp * sqrtPriceX96^2 / Q96^2
-                
-                uint256 valueTotal0InLp_asToken0 = total0InLp; // Already in terms of token0
-                uint256 valueTotal1InLp_asToken0 = FullMath.mulDiv(FullMath.mulDiv(total1InLp, sqrtPriceX96, Q96), sqrtPriceX96, Q96);
-
-                uint256 totalLpValue_asToken0 = valueTotal0InLp_asToken0 + valueTotal1InLp_asToken0;
-                
-                if (totalLpValue_asToken0 == 0) { // Should ideally not happen if total0/total1 > 0 unless price is extreme
-                    amountToSwap = assetBalance / 2; // Fallback
-                } else {
-                    // Proportion of value that should be token1 = valueTotal1InLp_asToken0 / totalLpValue_asToken0
-                    amountToSwap = FullMath.mulDiv(assetBalance, valueTotal1InLp_asToken0, totalLpValue_asToken0);
-                }
+                // Our asset is token0. The "other token" is token1.
+                // Calculate value of LP's token1 holdings, in terms of token0 (our asset).
+                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(FullMath.mulDiv(total1InLp, sqrtPriceX96, Q96), sqrtPriceX96, Q96);
+                // Calculate total LP value in terms of token0 (our asset).
+                totalLpValue_inAssetTokenTerms = total0InLp + valueLpHoldingOfOtherToken_inAssetTokenTerms;
             } else {
-                // Asset is token1. We want to swap asset (token1) for _OTHER_TOKEN (token0).
-                // Calculate value of total0 and total1 in LP in terms of token1.
-                // value_total1_in_t1 = total1InLp
-                // value_total0_in_t1 = total0InLp * price_token0_in_token1
-                // price_token0_in_token1 = (Q96 / sqrtPriceX96)^2
-                // So, value_total0_in_t1 = total0InLp * Q96^2 / sqrtPriceX96^2
+                // Our asset is token1. The "other token" is token0.
+                // Calculate value of LP's token0 holdings, in terms of token1 (our asset).
+                valueLpHoldingOfOtherToken_inAssetTokenTerms = FullMath.mulDiv(FullMath.mulDiv(total0InLp, Q96, sqrtPriceX96), Q96, sqrtPriceX96);
+                // Calculate total LP value in terms of token1 (our asset).
+                totalLpValue_inAssetTokenTerms = total1InLp + valueLpHoldingOfOtherToken_inAssetTokenTerms;
+            }
 
-                uint256 valueTotal1InLp_asToken1 = total1InLp; // Already in terms of token1
-                uint256 valueTotal0InLp_asToken1 = FullMath.mulDiv(FullMath.mulDiv(total0InLp, Q96, sqrtPriceX96), Q96, sqrtPriceX96);
-                
-                uint256 totalLpValue_asToken1 = valueTotal1InLp_asToken1 + valueTotal0InLp_asToken1;
-
-                if (totalLpValue_asToken1 == 0) { // Fallback
-                    amountToSwap = assetBalance / 2;
-                } else {
-                    // Proportion of value that should be token0 = valueTotal0InLp_asToken1 / totalLpValue_asToken1
-                    amountToSwap = FullMath.mulDiv(assetBalance, valueTotal0InLp_asToken1, totalLpValue_asToken1);
-                }
+            if (totalLpValue_inAssetTokenTerms == 0) {
+                amountToSwap = assetBalance / 2; // Fallback: Total LP value is zero, aim for 50/50.
+            } else {
+                // Calculate how much of our asset to swap to get the "other token"
+                // in proportion to its value representation in the LP.
+                amountToSwap = FullMath.mulDiv(assetBalance, valueLpHoldingOfOtherToken_inAssetTokenTerms, totalLpValue_inAssetTokenTerms);
             }
         }
         
