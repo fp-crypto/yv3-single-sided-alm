@@ -21,6 +21,7 @@ contract OperationTest is Setup {
 
     function test_operation(uint256 _amount) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+        uint256 maxDelta = (_amount * 0.05e18) / 1e18; // allow a 5% deviation
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -29,6 +30,26 @@ contract OperationTest is Setup {
 
         vm.prank(keeper);
         strategy.tend();
+        logStrategyInfo();
+        assertApproxEqAbs(
+            strategy.estimatedTotalAsset(),
+            _amount,
+            maxDelta,
+            "!eta"
+        );
+        assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
+        assertApproxEqRel(
+            asset.balanceOf(address(strategy)),
+            0,
+            maxDelta,
+            "too much idle asset"
+        );
+        assertApproxEqRel(
+            otherAsset.balanceOf(address(strategy)),
+            0,
+            maxDelta,
+            "too much idle otherAsset"
+        );
 
         // Earn Interest
         skip(1 days);
@@ -38,8 +59,8 @@ contract OperationTest is Setup {
         (uint256 profit, uint256 loss) = strategy.report();
 
         // Check return Values
-        assertGe(profit, 0, "!profit");
-        assertEq(loss, 0, "!loss");
+        assertApproxEqAbs(profit, 0, maxDelta, "!profit");
+        assertApproxEqAbs(loss, 0, maxDelta, "!loss");
 
         skip(strategy.profitMaxUnlockTime());
 

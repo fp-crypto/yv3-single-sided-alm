@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import "forge-std/console2.sol";
 import {Test} from "forge-std/Test.sol";
 
-import {Strategy, ERC20} from "../../Strategy.sol";
+import {Strategy, ERC20, ISushiMultiPositionLiquidityManager} from "../../Strategy.sol";
 import {StrategyFactory} from "../../StrategyFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
@@ -24,6 +24,7 @@ contract Setup is Test, IEvents {
     ERC20 public asset;
     IStrategyInterface public strategy;
     address public lp;
+    ERC20 public otherAsset;
 
     StrategyFactory public strategyFactory;
 
@@ -55,6 +56,11 @@ contract Setup is Test, IEvents {
         // Set asset
         asset = ERC20(tokenAddrs["DAI"]);
         lp = tokenAddrs["steerDAIUSDC"];
+        otherAsset = ERC20(
+            ISushiMultiPositionLiquidityManager(lp).token1() == address(asset)
+                ? ISushiMultiPositionLiquidityManager(lp).token0()
+                : ISushiMultiPositionLiquidityManager(lp).token1()
+        );
 
         // Set decimals
         decimals = asset.decimals();
@@ -163,5 +169,16 @@ contract Setup is Test, IEvents {
         tokenAddrs["DAI"] = 0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063;
         tokenAddrs["USDC"] = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
         tokenAddrs["steerDAIUSDC"] = 0x77ce0a6ddCBb30d69015105726D106686a054719;
+    }
+
+    function logStrategyInfo() internal {
+        console2.log("==== Strategy Info ====");
+        console2.log("Total Assets: %e", strategy.totalAssets());
+        console2.log("ETA: %e", strategy.estimatedTotalAsset());
+        console2.log("Idle asset: %e", asset.balanceOf(address(strategy)));
+        console2.log("Idle otherAsset: %e", otherAsset.balanceOf(address(strategy)));
+        console2.log("LP balance: %e", ERC20(lp).balanceOf(address(strategy)));
+        console2.log("LP in asset: %e", strategy.lpVaultInAsset());
+        console2.log("======================");
     }
 }

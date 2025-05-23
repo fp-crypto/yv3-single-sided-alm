@@ -11,6 +11,8 @@ interface IStrategyInterface is IStrategy {
 
     function STEER_LP() external view returns (address);
 
+    function estimatedTotalAsset() external view returns (uint256);
+
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,

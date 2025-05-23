@@ -75,67 +75,114 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         returns (uint256 _totalAssets)
     {
         // TODO: position adjustments?
-        _totalAssets = asset.balanceOf(address(this)) + lpVaultInAsset();
+        _totalAssets = estimatedTotalAsset();
     }
 
     /*//////////////////////////////////////////////////////////////
                     VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    function estimatedTotalAsset() public view returns (uint256) {
+        uint256 _assetBalance = asset.balanceOf(address(this));
+        uint256 _otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
+        uint256 _otherTokenBalanceInAsset = _valueOfOtherTokenInAsset(
+            _otherTokenBalance
+        );
+        uint256 _lpBalanceInAsset = lpVaultInAsset();
+        return _assetBalance + _otherTokenBalanceInAsset + _lpBalanceInAsset;
+    }
+
+    /**
+     * @notice Calculates the total value of the strategy's holdings in the Steer LP,
+     *         denominated in the strategy's underlying asset.
+     * @dev This function considers the strategy's share of both token0 and token1
+     *      in the LP and converts their value to the asset's denomination using the
+     *      current pool price.
+     * @return valueLpInAssetTerms The total value of LP holdings in terms of the asset.
+     */
     function lpVaultInAsset()
         public
         view
         returns (uint256 valueLpInAssetTerms)
     {
-        uint256 myShares = STEER_LP.balanceOf(address(this));
-        if (myShares == 0) return 0;
+        uint256 balanceOfLpShares = STEER_LP.balanceOf(address(this));
+        if (balanceOfLpShares == 0) return 0;
 
         (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
         uint256 totalLpShares = STEER_LP.totalSupply();
         if (totalLpShares == 0) return 0; // this should never happen
 
         uint256 balanceOfToken0InLp = FullMath.mulDiv(
-            myShares,
+            balanceOfLpShares,
             total0InLp,
             totalLpShares
         );
         uint256 balanceOfToken1InLp = FullMath.mulDiv(
-            myShares,
+            balanceOfLpShares,
             total1InLp,
             totalLpShares
         );
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
-
         uint256 valueOtherTokenInAsset;
 
-        if (_ASSET_IS_TOKEN_0) { // asset is token0 (e.g., USDC). Other is token1 (e.g., DAI).
-            // valueOtherTokenInAsset is value of DAI (token1) holdings in USDC (token0/asset) terms (unscaled)
-            valueOtherTokenInAsset = FullMath.mulDiv(
-                FullMath.mulDiv(balanceOfToken1InLp, Q96, sqrtPriceX96),
-                Q96,
+        if (_ASSET_IS_TOKEN_0) {
+            // asset is token0 (e.g., USDC). Other is token1 (e.g., DAI).
+            valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
+                balanceOfToken1InLp,
                 sqrtPriceX96
             );
-            // Scale to asset's (token0) decimals
-            if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) { // e.g., DAI (18) > USDC (6)
-                valueOtherTokenInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
-            } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) {
-                valueOtherTokenInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
-            }
             valueLpInAssetTerms = balanceOfToken0InLp + valueOtherTokenInAsset;
-        } else { // asset is token1 (e.g., DAI). Other is token0 (e.g., USDC).
-            // valueOtherTokenInAsset is value of USDC (token0) holdings in DAI (token1/asset) terms (unscaled)
-            valueOtherTokenInAsset = FullMath.mulDiv(
-                FullMath.mulDiv(balanceOfToken0InLp, sqrtPriceX96, Q96),
+        } else {
+            // asset is token1 (e.g., DAI). Other is token0 (e.g., USDC).
+            valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
+                balanceOfToken0InLp,
+                sqrtPriceX96
+            );
+            valueLpInAssetTerms = balanceOfToken1InLp + valueOtherTokenInAsset;
+        }
+    }
+
+    function _valueOfOtherTokenInAsset(
+        uint256 amountOfOtherToken
+    ) internal view returns (uint256 value) {
+        if (amountOfOtherToken == 0) return 0;
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+        return _valueOfOtherTokenInAsset(amountOfOtherToken, sqrtPriceX96);
+    }
+
+    /**
+     * @notice Calculates the value of a given amount of the "other token" (not the strategy's asset)
+     *         in terms of the strategy's underlying asset.
+     * @dev This function uses the provided sqrtPriceX96 to convert the value of the other token
+     *      to the asset's denomination, accounting for decimal differences.
+     * @param amountOfOtherToken The amount of the other token.
+     * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool.
+     * @return value The calculated value in terms of the strategy's asset.
+     */
+    function _valueOfOtherTokenInAsset(
+        uint256 amountOfOtherToken,
+        uint160 sqrtPriceX96
+    ) internal view returns (uint256 value) {
+        if (amountOfOtherToken == 0) return 0;
+        if (_ASSET_IS_TOKEN_0) {
+            // asset is token0. Other is token1.
+            // value is value of otherToken (token1) holdings in asset (token0) terms (unscaled)
+            // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
+            value = FullMath.mulDiv(
+                amountOfOtherToken,
+                Q96,
+                FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
+            );
+        } else {
+            // asset is token1. Other is token0.
+            // value is value of otherToken (token0) holdings in asset (token1) terms (unscaled)
+            value = FullMath.mulDiv(
+                FullMath.mulDiv(amountOfOtherToken, sqrtPriceX96, Q96),
                 sqrtPriceX96,
                 Q96
             );
-            // Scale to asset's (token1) decimals
-            if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
-                valueOtherTokenInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
-            } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) { // e.g., DAI (18) > USDC (6)
-                valueOtherTokenInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
-            }
-            valueLpInAssetTerms = balanceOfToken1InLp + valueOtherTokenInAsset;
         }
     }
 
@@ -170,6 +217,17 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         _withdrawFromLp(_amount);
     }
 
+    /**
+     * @notice Calculates the amount of the strategy's asset to swap to achieve a balanced
+     *         deposit into the Uniswap V3 LP, based on the current LP composition.
+     * @dev If the LP is empty, it aims for a 50/50 value split by swapping half the asset.
+     *      Otherwise, it calculates the swap amount to match the LP's current token value ratio.
+     * @param assetBalance The current balance of the strategy's asset available for deposit.
+     * @param total0InLp The total amount of token0 in the Uniswap V3 LP.
+     * @param total1InLp The total amount of token1 in the Uniswap V3 LP.
+     * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool.
+     * @return amountToSwap The calculated amount of asset to swap.
+     */
     function _calculateAmountToSwapForDeposit(
         uint256 assetBalance,
         uint256 total0InLp,
@@ -185,17 +243,12 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             if (_ASSET_IS_TOKEN_0) {
                 // Asset is token0. Other token is token1.
                 // otherTokenValueInAsset is value of LP's token1 holdings, in terms of token0 (asset), unscaled.
+                // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
                 otherTokenValueInAsset = FullMath.mulDiv(
-                    FullMath.mulDiv(total1InLp, Q96, sqrtPriceX96),
+                    total1InLp,
                     Q96,
-                    sqrtPriceX96
+                    FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
                 );
-                // Scale this value to asset's (token0) decimals.
-                if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
-                    otherTokenValueInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
-                } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) {
-                    otherTokenValueInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
-                }
                 // total0InLp is already in asset's (token0) decimals.
                 totalLpValueInAsset = total0InLp + otherTokenValueInAsset;
             } else {
@@ -206,12 +259,6 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     sqrtPriceX96,
                     Q96
                 );
-                // Scale this value to asset's (token1) decimals.
-                if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
-                    otherTokenValueInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
-                } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) { // e.g. DAI (18) > USDC (6)
-                    otherTokenValueInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
-                }
                 // total1InLp is already in asset's (token1) decimals.
                 totalLpValueInAsset = total1InLp + otherTokenValueInAsset;
             }
@@ -230,6 +277,12 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         }
     }
 
+    /**
+     * @notice Deposits assets into the Steer LP.
+     * @dev This function first calculates the optimal amount of the strategy's asset to swap
+     *      to achieve a balanced deposit. It then performs the swap (if necessary) and
+     *      deposits both the remaining asset and the acquired other token into the Steer LP.
+     */
     function _depositInLp() internal {
         uint256 assetBalance = asset.balanceOf(address(this));
         if (assetBalance == 0) {
@@ -314,23 +367,30 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         );
     }
 
+    /**
+     * @notice Withdraws a specified amount of the strategy's asset from the Steer LP.
+     * @dev Calculates the number of LP shares to withdraw based on the desired asset amount.
+     *      After withdrawing from the Steer LP, if any "other token" is received,
+     *      it is swapped back to the strategy's asset.
+     * @param assetToWithdraw The amount of the strategy's asset to withdraw from the LP.
+     */
     function _withdrawFromLp(uint256 assetToWithdraw) internal {
         if (assetToWithdraw == 0) return;
 
-        uint256 myShares = STEER_LP.balanceOf(address(this));
-        if (myShares == 0) return;
+        uint256 balanceOfLpShares = STEER_LP.balanceOf(address(this));
+        if (balanceOfLpShares == 0) return;
 
-        uint256 myHoldingsValueInAsset = lpVaultInAsset();
-        if (myHoldingsValueInAsset == 0) return;
+        uint256 lpValueInAsset = lpVaultInAsset();
+        if (lpValueInAsset == 0) return;
 
         uint256 sharesToWithdraw;
-        if (assetToWithdraw >= myHoldingsValueInAsset) {
-            sharesToWithdraw = myShares;
+        if (assetToWithdraw >= lpValueInAsset) {
+            sharesToWithdraw = balanceOfLpShares;
         } else {
             sharesToWithdraw = FullMath.mulDiv(
                 assetToWithdraw,
-                myShares,
-                myHoldingsValueInAsset
+                balanceOfLpShares,
+                lpValueInAsset
             );
         }
 
@@ -383,7 +443,10 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     ) external override {
         require(msg.sender == _POOL, "Strategy: Invalid caller");
 
-        SwapCallbackData memory callbackData = abi.decode(_data, (SwapCallbackData));
+        SwapCallbackData memory callbackData = abi.decode(
+            _data,
+            (SwapCallbackData)
+        );
         uint256 amountPaid;
 
         if (_ASSET_IS_TOKEN_0) {
@@ -422,9 +485,6 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             amountPaid == callbackData.amountToPay,
             "Strategy: Paid amount mismatch"
         );
-        ERC20(callbackData.tokenToPay).safeTransfer(
-            _POOL,
-            amountPaid
-        );
+        ERC20(callbackData.tokenToPay).safeTransfer(_POOL, amountPaid);
     }
 }
