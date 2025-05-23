@@ -17,6 +17,8 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     address private immutable _POOL;
     address private immutable _OTHER_TOKEN;
     bool private immutable _ASSET_IS_TOKEN_0;
+    uint256 private immutable _ASSET_DECIMALS;
+    uint256 private immutable _OTHER_TOKEN_DECIMALS;
 
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
@@ -42,6 +44,8 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         } else {
             _OTHER_TOKEN = _token0;
         }
+        _ASSET_DECIMALS = asset.decimals();
+        _OTHER_TOKEN_DECIMALS = ERC20(_OTHER_TOKEN).decimals();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -90,50 +94,48 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         uint256 totalLpShares = STEER_LP.totalSupply();
         if (totalLpShares == 0) return 0; // this should never happen
 
-        uint256 myHoldingsToken0 = FullMath.mulDiv(
+        uint256 balanceOfToken0InLp = FullMath.mulDiv(
             myShares,
             total0InLp,
             totalLpShares
         );
-        uint256 myHoldingsToken1 = FullMath.mulDiv(
+        uint256 balanceOfToken1InLp = FullMath.mulDiv(
             myShares,
             total1InLp,
             totalLpShares
         );
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
-        uint8 assetDecimals = asset.decimals();
-        uint8 otherTokenDecimals = ERC20(_OTHER_TOKEN).decimals();
+        uint256 valueOtherTokenInAsset;
 
         if (_ASSET_IS_TOKEN_0) { // asset is token0 (e.g., USDC). Other is token1 (e.g., DAI).
-            // valueMyToken1InAssetTerms is value of DAI holdings in USDC (unscaled)
-            uint256 valueMyToken1InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken1, Q96, sqrtPriceX96),
+            // valueOtherTokenInAsset is value of DAI (token1) holdings in USDC (token0/asset) terms (unscaled)
+            valueOtherTokenInAsset = FullMath.mulDiv(
+                FullMath.mulDiv(balanceOfToken1InLp, Q96, sqrtPriceX96),
                 Q96,
                 sqrtPriceX96
             );
             // Scale to asset's (token0) decimals
-            if (otherTokenDecimals > assetDecimals) { // e.g., DAI (18) > USDC (6)
-                valueMyToken1InAssetTerms /= (10**(otherTokenDecimals - assetDecimals));
-            } else if (assetDecimals > otherTokenDecimals) {
-                valueMyToken1InAssetTerms *= (10**(assetDecimals - otherTokenDecimals));
+            if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) { // e.g., DAI (18) > USDC (6)
+                valueOtherTokenInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
+            } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) {
+                valueOtherTokenInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
             }
-            valueLpInAssetTerms = myHoldingsToken0 + valueMyToken1InAssetTerms;
+            valueLpInAssetTerms = balanceOfToken0InLp + valueOtherTokenInAsset;
         } else { // asset is token1 (e.g., DAI). Other is token0 (e.g., USDC).
-            // valueMyToken0InAssetTerms is value of USDC holdings in DAI (unscaled)
-            uint256 valueMyToken0InAssetTerms = FullMath.mulDiv(
-                FullMath.mulDiv(myHoldingsToken0, sqrtPriceX96, Q96),
+            // valueOtherTokenInAsset is value of USDC (token0) holdings in DAI (token1/asset) terms (unscaled)
+            valueOtherTokenInAsset = FullMath.mulDiv(
+                FullMath.mulDiv(balanceOfToken0InLp, sqrtPriceX96, Q96),
                 sqrtPriceX96,
                 Q96
             );
             // Scale to asset's (token1) decimals
-            if (otherTokenDecimals > assetDecimals) { // e.g. hypothetical other > DAI
-                // This case is not USDC > DAI, but included for completeness
-                valueMyToken0InAssetTerms /= (10**(otherTokenDecimals - assetDecimals));
-            } else if (assetDecimals > otherTokenDecimals) { // e.g., DAI (18) > USDC (6)
-                valueMyToken0InAssetTerms *= (10**(assetDecimals - otherTokenDecimals));
+            if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
+                valueOtherTokenInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
+            } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) { // e.g., DAI (18) > USDC (6)
+                valueOtherTokenInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
             }
-            valueLpInAssetTerms = myHoldingsToken1 + valueMyToken0InAssetTerms;
+            valueLpInAssetTerms = balanceOfToken1InLp + valueOtherTokenInAsset;
         }
     }
 
@@ -180,9 +182,6 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             uint256 otherTokenValueInAsset;
             uint256 totalLpValueInAsset;
 
-            uint8 assetDecimals = asset.decimals();
-            uint8 otherTokenDecimals = ERC20(_OTHER_TOKEN).decimals();
-
             if (_ASSET_IS_TOKEN_0) {
                 // Asset is token0. Other token is token1.
                 // otherTokenValueInAsset is value of LP's token1 holdings, in terms of token0 (asset), unscaled.
@@ -192,10 +191,10 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     sqrtPriceX96
                 );
                 // Scale this value to asset's (token0) decimals.
-                if (otherTokenDecimals > assetDecimals) {
-                    otherTokenValueInAsset /= (10**(otherTokenDecimals - assetDecimals));
-                } else if (assetDecimals > otherTokenDecimals) {
-                    otherTokenValueInAsset *= (10**(assetDecimals - otherTokenDecimals));
+                if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
+                    otherTokenValueInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
+                } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) {
+                    otherTokenValueInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
                 }
                 // total0InLp is already in asset's (token0) decimals.
                 totalLpValueInAsset = total0InLp + otherTokenValueInAsset;
@@ -208,10 +207,10 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                     Q96
                 );
                 // Scale this value to asset's (token1) decimals.
-                if (otherTokenDecimals > assetDecimals) { // Should not happen if other is USDC and asset is DAI
-                    otherTokenValueInAsset /= (10**(otherTokenDecimals - assetDecimals));
-                } else if (assetDecimals > otherTokenDecimals) { // e.g. DAI (18) > USDC (6)
-                    otherTokenValueInAsset *= (10**(assetDecimals - otherTokenDecimals));
+                if (_OTHER_TOKEN_DECIMALS > _ASSET_DECIMALS) {
+                    otherTokenValueInAsset /= (10**(_OTHER_TOKEN_DECIMALS - _ASSET_DECIMALS));
+                } else if (_ASSET_DECIMALS > _OTHER_TOKEN_DECIMALS) { // e.g. DAI (18) > USDC (6)
+                    otherTokenValueInAsset *= (10**(_ASSET_DECIMALS - _OTHER_TOKEN_DECIMALS));
                 }
                 // total1InLp is already in asset's (token1) decimals.
                 totalLpValueInAsset = total1InLp + otherTokenValueInAsset;

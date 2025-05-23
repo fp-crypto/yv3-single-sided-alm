@@ -43,8 +43,10 @@ contract OperationTest is Setup {
 
         skip(strategy.profitMaxUnlockTime());
 
-        vm.prank(management);
+        vm.startPrank(management);
+        strategy.shutdownStrategy();
         strategy.emergencyWithdraw(type(uint256).max);
+        vm.stopPrank();
 
         uint256 balanceBefore = asset.balanceOf(user);
 
