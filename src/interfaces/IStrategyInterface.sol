@@ -8,5 +8,13 @@ interface IStrategyInterface is IStrategy {
         external
         view
         returns (uint256 valueLpInAssetTerms);
+
+    function STEER_LP() external view returns (address);
+
+    function uniswapV3SwapCallback(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        bytes calldata _data
+    ) external;
     //TODO: Add your specific implementation interface in here.
 }
