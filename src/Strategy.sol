@@ -63,13 +63,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
 
     // @inheritdoc BaseStrategy
     function _freeFunds(uint256 _amount) internal override {
-        if (_amount == 0) return;
-        uint256 availableAsset = asset.balanceOf(address(this));
-        if (availableAsset >= _amount) {
-            return;
-        }
-        uint256 neededFromLp = _amount - availableAsset;
-        _withdrawFromLp(neededFromLp);
+        // do nothing since a swap is required
     }
 
     // @inheritdoc BaseStrategy
@@ -475,6 +469,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
      * @dev This function first calculates the optimal amount of the strategy's asset to swap
      *      to achieve a balanced deposit. It then performs the swap (if necessary) and
      *      deposits both the remaining asset and the acquired other token into the Steer LP.
+     *      Respects the targetIdleAssetBps to maintain a percentage of assets idle.
      */
     function _depositInLp() internal {
         uint256 assetBalance = asset.balanceOf(address(this));
@@ -482,13 +477,28 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             address(this)
         );
 
+        uint256 availableForDeposit = assetBalance;
+
+        // Apply idle asset target if configured
+        if (targetIdleAssetBps > 0) {
+            uint256 totalAssets = TokenizedStrategy.totalAssets();
+            uint256 targetIdleAmount = (totalAssets * targetIdleAssetBps) /
+                10000;
+
+            // Only deposit if we have more than the target idle amount
+            if (assetBalance <= targetIdleAmount) return;
+
+            // Calculate amount available for deposit (maintaining idle target)
+            availableForDeposit = assetBalance - targetIdleAmount;
+        }
+
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
         uint256 otherTokenValueInAsset = _valueOfOtherTokenInAsset(
             otherTokenBalance,
             sqrtPriceX96
         );
-        uint256 totalDepositValueInAsset = assetBalance +
+        uint256 totalDepositValueInAsset = availableForDeposit +
             otherTokenValueInAsset;
 
         if (totalDepositValueInAsset == 0) return;
@@ -506,7 +516,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         _performRebalancingSwap(
             otherTokenValueInAsset,
             targetOtherTokenValueInAsset,
-            assetBalance,
+            availableForDeposit,
             otherTokenBalance,
             sqrtPriceX96
         );
