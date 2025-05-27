@@ -323,92 +323,149 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
      *      deposits both the remaining asset and the acquired other token into the Steer LP.
      */
     function _depositInLp() internal {
-        uint256 _currentAssetBalance = asset.balanceOf(address(this));
-        uint256 _existingOtherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+        uint256 assetBalance = asset.balanceOf(address(this));
+        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
 
-        (uint160 _sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
-        uint256 _existingOtherTokenValueInAsset = _valueOfOtherTokenInAsset(_existingOtherTokenBalance, _sqrtPriceX96);
-        uint256 _totalValueToDepositInAssetTerms = _currentAssetBalance + _existingOtherTokenValueInAsset;
+        uint256 otherTokenValueInAsset = _valueOfOtherTokenInAsset(
+            otherTokenBalance,
+            sqrtPriceX96
+        );
+        uint256 totalDepositValueInAsset = assetBalance +
+            otherTokenValueInAsset;
 
-        if (_totalValueToDepositInAssetTerms == 0) {
+        if (totalDepositValueInAsset == 0) {
             return;
         }
 
-        (uint256 _total0InLp, uint256 _total1InLp) = STEER_LP.getTotalAmounts();
+        (uint256 lpToken0Balance, uint256 lpToken1Balance) = STEER_LP
+            .getTotalAmounts();
 
-        // _targetOtherTokenValueInAssetTerms is the value of _OTHER_TOKEN (expressed in asset terms)
+        // targetOtherTokenValueInAsset is the value of _OTHER_TOKEN (expressed in asset terms)
         // that we want to have for the deposit, to match the LP's current ratio or a 50/50 split if LP is empty.
         // Note: _calculateAmountToSwapForDeposit returns the value of the "other token" side of the LP, in asset terms.
-        uint256 _targetOtherTokenValueInAssetTerms = _calculateAmountToSwapForDeposit(
-            _totalValueToDepositInAssetTerms, // This is the total value we are working with
-            _total0InLp,
-            _total1InLp,
-            _sqrtPriceX96
+        uint256 targetOtherTokenValueInAsset = _calculateAmountToSwapForDeposit(
+            totalDepositValueInAsset, // This is the total value we are working with
+            lpToken0Balance,
+            lpToken1Balance,
+            sqrtPriceX96
         );
 
-        if (_targetOtherTokenValueInAssetTerms > _existingOtherTokenValueInAsset) {
+        if (targetOtherTokenValueInAsset > otherTokenValueInAsset) {
             // We need more _OTHER_TOKEN. Calculate how much asset (value) to swap.
-            uint256 _assetValueToSwapForOtherToken = _targetOtherTokenValueInAssetTerms - _existingOtherTokenValueInAsset;
-            
+            uint256 assetValueToSwap = targetOtherTokenValueInAsset -
+                otherTokenValueInAsset;
+
             // Ensure we don't try to swap more asset than we have (by value)
-            if (_assetValueToSwapForOtherToken > _currentAssetBalance) {
-                _assetValueToSwapForOtherToken = _currentAssetBalance;
+            if (assetValueToSwap > assetBalance) {
+                assetValueToSwap = assetBalance;
             }
 
-            if (_assetValueToSwapForOtherToken > 0) {
-                // The amount to swap is the quantity of asset, which is _assetValueToSwapForOtherToken
-                SwapCallbackData memory callbackData = SwapCallbackData(address(asset), _assetValueToSwapForOtherToken);
+            if (assetValueToSwap > 0) {
+                // The amount to swap is the quantity of asset, which is assetValueToSwap
+                SwapCallbackData memory callbackData = SwapCallbackData(
+                    address(asset),
+                    assetValueToSwap
+                );
                 bytes memory data = abi.encode(callbackData);
 
-                if (_ASSET_IS_TOKEN_0) { // Selling asset (token0) for _OTHER_TOKEN (token1)
-                    IUniswapV3Pool(_POOL).swap(address(this), true, int256(_assetValueToSwapForOtherToken), TickMath.MIN_SQRT_RATIO + 1, data);
-                } else { // Selling asset (token1) for _OTHER_TOKEN (token0)
-                    IUniswapV3Pool(_POOL).swap(address(this), false, int256(_assetValueToSwapForOtherToken), TickMath.MAX_SQRT_RATIO - 1, data);
+                if (_ASSET_IS_TOKEN_0) {
+                    // Selling asset (token0) for _OTHER_TOKEN (token1)
+                    IUniswapV3Pool(_POOL).swap(
+                        address(this),
+                        true,
+                        int256(assetValueToSwap),
+                        TickMath.MIN_SQRT_RATIO + 1,
+                        data
+                    );
+                } else {
+                    // Selling asset (token1) for _OTHER_TOKEN (token0)
+                    IUniswapV3Pool(_POOL).swap(
+                        address(this),
+                        false,
+                        int256(assetValueToSwap),
+                        TickMath.MAX_SQRT_RATIO - 1,
+                        data
+                    );
                 }
             }
-        } else if (_existingOtherTokenValueInAsset > _targetOtherTokenValueInAssetTerms) {
+        } else if (otherTokenValueInAsset > targetOtherTokenValueInAsset) {
             // We have excess _OTHER_TOKEN. Calculate how much _OTHER_TOKEN (in value of asset terms) to swap for asset.
-            uint256 _valueOfOtherTokenToSellInAssetTerms = _existingOtherTokenValueInAsset - _targetOtherTokenValueInAssetTerms;
+            uint256 excessOtherTokenValueInAsset = otherTokenValueInAsset -
+                targetOtherTokenValueInAsset;
             // Convert this value back to a quantity of _OTHER_TOKEN.
-            uint256 _otherTokenQuantityToSwapForAsset = _convertAssetValueToOtherTokenQuantity(_valueOfOtherTokenToSellInAssetTerms, _sqrtPriceX96);
+            uint256 otherTokenQuantityToSwap = _convertAssetValueToOtherTokenQuantity(
+                    excessOtherTokenValueInAsset,
+                    sqrtPriceX96
+                );
 
             // Ensure we don't try to swap more _OTHER_TOKEN than we have (by quantity)
-            if (_otherTokenQuantityToSwapForAsset > _existingOtherTokenBalance) {
-                _otherTokenQuantityToSwapForAsset = _existingOtherTokenBalance;
+            if (otherTokenQuantityToSwap > otherTokenBalance) {
+                otherTokenQuantityToSwap = otherTokenBalance;
             }
 
-            if (_otherTokenQuantityToSwapForAsset > 0) {
-                SwapCallbackData memory callbackData = SwapCallbackData(address(_OTHER_TOKEN), _otherTokenQuantityToSwapForAsset);
+            if (otherTokenQuantityToSwap > 0) {
+                SwapCallbackData memory callbackData = SwapCallbackData(
+                    address(_OTHER_TOKEN),
+                    otherTokenQuantityToSwap
+                );
                 bytes memory data = abi.encode(callbackData);
 
-                if (_ASSET_IS_TOKEN_0) { // Selling _OTHER_TOKEN (token1) for asset (token0)
-                    IUniswapV3Pool(_POOL).swap(address(this), false, int256(_otherTokenQuantityToSwapForAsset), TickMath.MAX_SQRT_RATIO - 1, data);
-                } else { // Selling _OTHER_TOKEN (token0) for asset (token1)
-                    IUniswapV3Pool(_POOL).swap(address(this), true, int256(_otherTokenQuantityToSwapForAsset), TickMath.MIN_SQRT_RATIO + 1, data);
+                if (_ASSET_IS_TOKEN_0) {
+                    // Selling _OTHER_TOKEN (token1) for asset (token0)
+                    IUniswapV3Pool(_POOL).swap(
+                        address(this),
+                        false,
+                        int256(otherTokenQuantityToSwap),
+                        TickMath.MAX_SQRT_RATIO - 1,
+                        data
+                    );
+                } else {
+                    // Selling _OTHER_TOKEN (token0) for asset (token1)
+                    IUniswapV3Pool(_POOL).swap(
+                        address(this),
+                        true,
+                        int256(otherTokenQuantityToSwap),
+                        TickMath.MIN_SQRT_RATIO + 1,
+                        data
+                    );
                 }
             }
         }
-        // If _targetOtherTokenValueInAssetTerms == _existingOtherTokenValueInAsset, no swap is needed.
+        // If targetOtherTokenValueInAsset == otherTokenValueInAsset, no swap is needed.
 
-        uint256 _finalAssetBalanceForDeposit = asset.balanceOf(address(this));
-        uint256 _finalOtherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+        uint256 assetBalanceForDeposit = asset.balanceOf(address(this));
+        uint256 otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
 
-        asset.forceApprove(address(STEER_LP), _finalAssetBalanceForDeposit);
-        ERC20(_OTHER_TOKEN).forceApprove(address(STEER_LP), _finalOtherTokenBalanceForDeposit);
+        asset.forceApprove(address(STEER_LP), assetBalanceForDeposit);
+        ERC20(_OTHER_TOKEN).forceApprove(
+            address(STEER_LP),
+            otherTokenBalanceForDeposit
+        );
 
-        uint256 _amount0ToDeposit;
-        uint256 _amount1ToDeposit;
+        uint256 token0DepositAmount;
+        uint256 token1DepositAmount;
 
         if (_ASSET_IS_TOKEN_0) {
-            _amount0ToDeposit = _finalAssetBalanceForDeposit;
-            _amount1ToDeposit = _finalOtherTokenBalanceForDeposit;
+            token0DepositAmount = assetBalanceForDeposit;
+            token1DepositAmount = otherTokenBalanceForDeposit;
         } else {
-            _amount0ToDeposit = _finalOtherTokenBalanceForDeposit;
-            _amount1ToDeposit = _finalAssetBalanceForDeposit;
+            token0DepositAmount = otherTokenBalanceForDeposit;
+            token1DepositAmount = assetBalanceForDeposit;
         }
 
-        STEER_LP.deposit(_amount0ToDeposit, _amount1ToDeposit, 0, 0, address(this));
+        STEER_LP.deposit(
+            token0DepositAmount,
+            token1DepositAmount,
+            0,
+            0,
+            address(this)
+        );
     }
 
     /**
@@ -442,7 +499,9 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
 
         STEER_LP.withdraw(sharesToWithdraw, 0, 0, address(this));
 
-        uint256 _totalOtherTokenAfterWithdraw = ERC20(_OTHER_TOKEN).balanceOf(address(this));
+        uint256 _totalOtherTokenAfterWithdraw = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
 
         if (_totalOtherTokenAfterWithdraw > 0) {
             SwapCallbackData memory callbackData = SwapCallbackData(
