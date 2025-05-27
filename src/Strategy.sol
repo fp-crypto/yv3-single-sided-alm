@@ -40,8 +40,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     address public auction;
 
     // Management parameters
+    uint16 public targetIdleAssetBps = 0; // Target idle asset as percentage in basis points (e.g., 500 = 5%)
     uint256 public depositLimit = type(uint256).max;
-    uint256 public targetIdleAssetBps = 0; // Target idle asset as percentage in basis points (e.g., 500 = 5%)
 
     struct SwapCallbackData {
         address tokenToPay;
@@ -495,10 +495,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         uint256 availableForDeposit = assetBalance;
 
+        uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         // Apply idle asset target if configured
-        if (targetIdleAssetBps > 0) {
+        if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
-            uint256 targetIdleAmount = (totalAssets * targetIdleAssetBps) /
+            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
                 10000;
 
             // Only deposit if we have more than the target idle amount
@@ -667,7 +668,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param _targetIdleAssetBps Target idle asset percentage in basis points (e.g., 500 = 5%)
      */
     function setTargetIdleAssetBps(
-        uint256 _targetIdleAssetBps
+        uint16 _targetIdleAssetBps
     ) external onlyManagement {
         require(_targetIdleAssetBps <= 10000, "Cannot exceed 100%");
         targetIdleAssetBps = _targetIdleAssetBps;
