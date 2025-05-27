@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {IStrategy} from "@tokenized-strategy/interfaces/IStrategy.sol";
+import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
 
-interface IStrategyInterface is IStrategy {
+interface IStrategyInterface is IBaseHealthCheck {
     function lpVaultInAsset()
         external
         view
@@ -18,5 +18,26 @@ interface IStrategyInterface is IStrategy {
         int256 amount1Delta,
         bytes calldata _data
     ) external;
-    //TODO: Add your specific implementation interface in here.
+
+    // Management parameters
+    function targetIdleAssetBps() external view returns (uint16);
+    function depositLimit() external view returns (uint256);
+    function useAuctions() external view returns (bool);
+    function auction() external view returns (address);
+
+    // Management functions
+    function setAuction(address _auction) external;
+    function setDepositLimit(uint256 _depositLimit) external;
+    function setTargetIdleAssetBps(uint16 _targetIdleAssetBps) external;
+    function manualSwapOtherTokenToAsset(uint256 _amount) external;
+    function manualWithdrawFromLp(uint256 _amount) external;
+
+    // Auction functions
+    function kickAuction(address _from) external returns (uint256);
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external;
 }

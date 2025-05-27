@@ -54,6 +54,9 @@ contract OperationTest is Setup {
         // Earn Interest
         skip(1 days);
 
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
         // Report profit
         vm.prank(keeper);
         (uint256 profit, uint256 loss) = strategy.report();
@@ -64,10 +67,58 @@ contract OperationTest is Setup {
 
         skip(strategy.profitMaxUnlockTime());
 
-        vm.startPrank(management);
-        strategy.shutdownStrategy();
-        strategy.emergencyWithdraw(type(uint256).max);
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(type(uint256).max);
+        logStrategyInfo();
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.startPrank(user);
+        strategy.redeem(strategy.maxRedeem(user), user, user);
         vm.stopPrank();
+
+        assertApproxEqAbs(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            maxDelta,
+            "!final balance"
+        );
+    }
+
+    function test_idle(uint256 _amount, uint16 _idleBps) public {
+        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+        _idleBps = uint16(bound(uint256(_idleBps), 0, 10_000));
+        uint256 maxDelta = (_amount * 0.05e18) / 1e18; // allow a 5% deviation
+
+        vm.prank(management);
+        strategy.setTargetIdleAssetBps(_idleBps);
+
+        // Deposit into strategy
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        vm.prank(keeper);
+        strategy.tend();
+
+        logStrategyInfo();
+        assertApproxEqAbs(
+            strategy.estimatedTotalAsset(),
+            _amount,
+            maxDelta,
+            "!eta"
+        );
+        assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
+        assertApproxEqRel(
+            asset.balanceOf(address(strategy)),
+            (_amount * _idleBps) / 10000,
+            0.01e18,
+            "too much idle asset"
+        );
+
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(type(uint256).max);
         logStrategyInfo();
 
         uint256 balanceBefore = asset.balanceOf(user);

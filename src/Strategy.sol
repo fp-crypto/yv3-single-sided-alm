@@ -495,8 +495,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         uint256 availableForDeposit = assetBalance;
 
-        uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         // Apply idle asset target if configured
+        uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
