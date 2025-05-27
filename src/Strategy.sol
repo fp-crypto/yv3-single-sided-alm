@@ -448,13 +448,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /**
      * @notice Performs the final deposit into the Steer LP.
      */
-    function _performLpDeposit() internal {
-        uint256 assetBalanceForDeposit = asset.balanceOf(address(this));
+    function _performLpDeposit(uint256 assetForDeposit) internal {
         uint256 otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(
             address(this)
         );
 
-        asset.forceApprove(address(STEER_LP), assetBalanceForDeposit);
+        asset.forceApprove(address(STEER_LP), assetForDeposit);
         ERC20(_OTHER_TOKEN).forceApprove(
             address(STEER_LP),
             otherTokenBalanceForDeposit
@@ -464,11 +463,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 token1DepositAmount;
 
         if (_ASSET_IS_TOKEN_0) {
-            token0DepositAmount = assetBalanceForDeposit;
+            token0DepositAmount = assetForDeposit;
             token1DepositAmount = otherTokenBalanceForDeposit;
         } else {
             token0DepositAmount = otherTokenBalanceForDeposit;
-            token1DepositAmount = assetBalanceForDeposit;
+            token1DepositAmount = assetForDeposit;
         }
 
         STEER_LP.deposit(
@@ -494,13 +493,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         );
 
         uint256 availableForDeposit = assetBalance;
+        uint256 targetIdleAmount;
 
         // Apply idle asset target if configured
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
-            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
-                10000;
+            targetIdleAmount = (totalAssets * _targetIdleAssetBps) / 10000;
 
             // Only deposit if we have more than the target idle amount
             if (assetBalance <= targetIdleAmount) return;
@@ -538,7 +537,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             sqrtPriceX96
         );
 
-        _performLpDeposit();
+        availableForDeposit = asset.balanceOf(address(this));
+        if (availableForDeposit <= targetIdleAmount) return;
+        _performLpDeposit(availableForDeposit - targetIdleAmount);
     }
 
     /**

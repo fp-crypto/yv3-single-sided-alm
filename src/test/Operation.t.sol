@@ -109,8 +109,10 @@ contract OperationTest is Setup {
             maxDelta,
             "!eta"
         );
-        assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
-        assertApproxEqRel(
+        if (_idleBps != 10_000)
+            assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
+        else assertEq(ERC20(lp).balanceOf(address(strategy)), 0, "lp");
+        assertApproxEqAbs(
             asset.balanceOf(address(strategy)),
             (_amount * _idleBps) / 10000,
             0.01e18,
