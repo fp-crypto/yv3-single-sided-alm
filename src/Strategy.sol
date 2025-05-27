@@ -58,7 +58,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             _ASSET_IS_TOKEN_0 = true;
             _PAIRED_TOKEN = _token1;
         } else {
-            require(address(asset) == _token1);
+            require(address(asset) == _token1, "!asset");
             _PAIRED_TOKEN = _token0;
         }
         _ASSET_DECIMALS = asset.decimals();
@@ -602,6 +602,15 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /*//////////////////////////////////////////////////////////////
                         MANAGEMENT FUNCTIONS
     //////////////////////////////////////////////////////////////*/
+
+    /// @notice Sets whether to use auctions for token swaps
+    /// @param _useAuctions New value for useAuctions flag
+    /// @dev Can only be called by management
+    /// @dev When enabled, the strategy will attempt to kick auctions during harvest
+    /// @dev When disabled, the strategy will not use auctions and rewards will accumulate
+    function setUseAuctions(bool _useAuctions) external onlyManagement {
+        useAuctions = _useAuctions;
+    }
 
     /// @notice Sets the auction contract address
     /// @param _auction Address of the auction contract
