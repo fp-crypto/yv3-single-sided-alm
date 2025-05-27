@@ -176,7 +176,10 @@ contract Setup is Test, IEvents {
         console2.log("Total Assets: %e", strategy.totalAssets());
         console2.log("ETA: %e", strategy.estimatedTotalAsset());
         console2.log("Idle asset: %e", asset.balanceOf(address(strategy)));
-        console2.log("Idle otherAsset: %e", otherAsset.balanceOf(address(strategy)));
+        console2.log(
+            "Idle otherAsset: %e",
+            otherAsset.balanceOf(address(strategy))
+        );
         console2.log("LP balance: %e", ERC20(lp).balanceOf(address(strategy)));
         console2.log("LP in asset: %e", strategy.lpVaultInAsset());
         console2.log("======================");
