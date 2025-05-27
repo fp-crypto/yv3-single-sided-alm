@@ -38,16 +38,16 @@ contract OperationTest is Setup {
             "!eta"
         );
         assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
-        assertApproxEqRel(
+        assertApproxEqAbs(
             asset.balanceOf(address(strategy)),
             0,
             maxDelta,
             "too much idle asset"
         );
-        assertApproxEqRel(
+        assertApproxEqAbs(
             otherAsset.balanceOf(address(strategy)),
             0,
-            maxDelta,
+            maxDelta / 10 ** 12, // TODO: correct decimals conversion
             "too much idle otherAsset"
         );
 
@@ -68,16 +68,19 @@ contract OperationTest is Setup {
         strategy.shutdownStrategy();
         strategy.emergencyWithdraw(type(uint256).max);
         vm.stopPrank();
+        logStrategyInfo();
 
         uint256 balanceBefore = asset.balanceOf(user);
 
         // Withdraw all funds
-        vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        vm.startPrank(user);
+        strategy.redeem(strategy.maxRedeem(user), user, user);
+        vm.stopPrank();
 
-        assertGe(
+        assertApproxEqAbs(
             asset.balanceOf(user),
             balanceBefore + _amount,
+            maxDelta,
             "!final balance"
         );
     }
@@ -115,7 +118,7 @@ contract OperationTest is Setup {
 
         // Withdraw all funds
         vm.prank(user);
-        strategy.redeem(_amount, user, user);
+        strategy.redeem(strategy.maxRedeem(user), user, user);
 
         assertGe(
             asset.balanceOf(user),

@@ -171,7 +171,7 @@ contract Setup is Test, IEvents {
         tokenAddrs["steerDAIUSDC"] = 0x77ce0a6ddCBb30d69015105726D106686a054719;
     }
 
-    function logStrategyInfo() internal {
+    function logStrategyInfo() internal view {
         console2.log("==== Strategy Info ====");
         console2.log("Total Assets: %e", strategy.totalAssets());
         console2.log("ETA: %e", strategy.estimatedTotalAsset());
