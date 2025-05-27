@@ -1,15 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0
 pragma solidity ^0.8.18;
 
-import {BaseStrategy, ERC20} from "@tokenized-strategy/BaseStrategy.sol";
+import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IAuction} from "./interfaces/IAuction.sol";
 import {ISushiMultiPositionLiquidityManager} from "./interfaces/steer/ISushiMultiPositionLiquidityManager.sol";
 import {IUniswapV3SwapCallback} from "@uniswap-v3-core/interfaces/callback/IUniswapV3SwapCallback.sol";
 import {IUniswapV3Pool} from "@uniswap-v3-core/interfaces/IUniswapV3Pool.sol";
 import {FullMath} from "@uniswap-v3-core/libraries/FullMath.sol";
 import {TickMath} from "@uniswap-v3-core/libraries/TickMath.sol";
 
-contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
+contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     using SafeERC20 for ERC20;
 
     ISushiMultiPositionLiquidityManager public immutable STEER_LP;
@@ -22,6 +23,15 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
 
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
+
+    /// @notice Flag to enable using auctions for token swaps
+    /// @dev When true, uses auction-based swapping mechanism for reward tokens
+    bool public useAuctions;
+
+    /// @notice Address of the auction contract used for token swaps
+    /// @dev Used when useAuctions is true
+    /// @dev Must be properly validated with matching want/receiver addresses
+    address public auction;
 
     // Management parameters
     uint256 public depositLimit = type(uint256).max;
@@ -36,7 +46,7 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
         address _asset,
         string memory _name,
         address _steerLP
-    ) BaseStrategy(_asset, _name) {
+    ) BaseHealthCheck(_asset, _name) {
         STEER_LP = ISushiMultiPositionLiquidityManager(_steerLP);
         _POOL = ISushiMultiPositionLiquidityManager(_steerLP).pool();
         address _token0 = ISushiMultiPositionLiquidityManager(_steerLP)
@@ -621,6 +631,23 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
                         MANAGEMENT FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /// @notice Sets the auction contract address
+    /// @param _auction Address of the auction contract
+    /// @dev Can only be called by management
+    /// @dev Verifies the auction contract is compatible with this strategy by:
+    ///      1. Checking that auction's want matches the strategy's asset
+    ///      2. Ensuring the auction contract's receiver is this strategy
+    function setAuction(address _auction) external onlyManagement {
+        if (_auction != address(0)) {
+            require(IAuction(_auction).want() == address(asset), "!want");
+            require(
+                IAuction(_auction).receiver() == address(this),
+                "!receiver"
+            );
+        }
+        auction = _auction;
+    }
+
     /**
      * @notice Set the deposit limit for the strategy
      * @param _depositLimit New deposit limit
@@ -666,5 +693,43 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
         require(_amount > 0, "Amount must be greater than 0");
         _withdrawFromLp(_amount);
+    }
+
+    /// @notice Initiates an auction for a given token
+    /// @dev Can only be called by keepers when auctions are enabled
+    /// @dev This function transfers tokens to the auction contract and kicks off a new auction
+    /// @dev Will fail if:
+    ///      1. Auctions are disabled or no auction contract is set
+    ///      2. The token is the strategy's asset or vault
+    ///      3. The token balance is below the configured minimum threshold
+    ///      4. The auction fails to start for any reason
+    /// @param _from The token to be sold in the auction
+    /// @return The available amount for bidding on in the auction
+    function kickAuction(
+        address _from
+    ) external virtual onlyManagement returns (uint256) {
+        (bool _success, uint256 _amount) = _tryKickAuction(auction, _from);
+        require(_success, "!kick");
+        return _amount;
+    }
+
+    function _tryKickAuction(
+        address _auction,
+        address _from
+    ) internal virtual returns (bool, uint256) {
+        if (!useAuctions || _auction == address(0)) return (false, 0); // auctions not enabled
+        if (_from == address(asset) || _from == address(STEER_LP))
+            return (false, 0); // don't kick asset or vault tokens
+        if (
+            IAuction(_auction).isActive(address(asset)) ||
+            IAuction(_auction).available(address(asset)) != 0
+        ) return (false, 0); // auction is active
+        uint256 _strategyBalance = ERC20(_from).balanceOf(address(this));
+        uint256 _totalBalance = _strategyBalance +
+            ERC20(_from).balanceOf(_auction);
+        if (_totalBalance == 0) return (false, 0); // no tokens to auction
+        ERC20(_from).safeTransfer(_auction, _strategyBalance);
+        uint256 _amountKicked = IAuction(_auction).kick(_from);
+        return (_amountKicked != 0, _amountKicked);
     }
 }
