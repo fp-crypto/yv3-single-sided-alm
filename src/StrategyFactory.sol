@@ -29,9 +29,11 @@ contract StrategyFactory {
     }
 
     /**
-     * @notice Deploy a new Strategy.
-     * @param _asset The underlying asset for the strategy to use.
-     * @return . The address of the new strategy.
+     * @notice Deploys a new Strategy.
+     * @param _asset The underlying asset for the strategy to use
+     * @param _name The name for the strategy
+     * @param _steerLP The Steer LP contract address
+     * @return The address of the new strategy
      */
     function newStrategy(
         address _asset,
@@ -57,6 +59,12 @@ contract StrategyFactory {
         return address(_newStrategy);
     }
 
+    /**
+     * @notice Sets the factory addresses
+     * @param _management New management address
+     * @param _performanceFeeRecipient New performance fee recipient address
+     * @param _keeper New keeper address
+     */
     function setAddresses(
         address _management,
         address _performanceFeeRecipient,
@@ -68,6 +76,11 @@ contract StrategyFactory {
         keeper = _keeper;
     }
 
+    /**
+     * @notice Checks if a strategy was deployed by this factory
+     * @param _strategy The strategy address to check
+     * @return Whether the strategy was deployed by this factory
+     */
     function isDeployedStrategy(
         address _strategy
     ) external view returns (bool) {

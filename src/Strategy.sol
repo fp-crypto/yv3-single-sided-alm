@@ -151,6 +151,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         }
     }
 
+    /**
+     * @notice Calculates the value of the other token in terms of the strategy's asset using current pool price.
+     * @param amountOfOtherToken The amount of the other token
+     * @return value The calculated value in terms of the strategy's asset
+     */
     function _valueOfOtherTokenInAsset(
         uint256 amountOfOtherToken
     ) internal view returns (uint256 value) {
@@ -308,8 +313,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Performs a swap from asset to other token.
-     * @param amountToSwap The amount of asset to swap.
+     * @notice Swaps asset for other token via Uniswap V3 pool.
+     * @param amountToSwap The amount of asset to swap
      */
     function _swapAssetForOtherToken(uint256 amountToSwap) internal {
         SwapCallbackData memory callbackData = SwapCallbackData(
@@ -338,8 +343,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Performs a swap from other token to asset.
-     * @param amountToSwap The amount of other token to swap.
+     * @notice Swaps other token for asset via Uniswap V3 pool.
+     * @param amountToSwap The amount of other token to swap
      */
     function _swapOtherTokenForAsset(uint256 amountToSwap) internal {
         SwapCallbackData memory callbackData = SwapCallbackData(
@@ -369,11 +374,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     /**
      * @notice Performs rebalancing swaps to achieve target token allocation for LP deposit.
-     * @param currentOtherTokenValueInAsset Current value of other token holdings in asset terms.
-     * @param targetOtherTokenValueInAsset Target value of other token holdings in asset terms.
-     * @param assetBalance Current asset balance.
-     * @param otherTokenBalance Current other token balance.
-     * @param sqrtPriceX96 Current pool price.
+     * @param currentOtherTokenValueInAsset Current value of other token holdings in asset terms
+     * @param targetOtherTokenValueInAsset Target value of other token holdings in asset terms
+     * @param assetBalance Current asset balance
+     * @param otherTokenBalance Current other token balance
+     * @param sqrtPriceX96 Current pool price
      */
     function _performRebalancingSwap(
         uint256 currentOtherTokenValueInAsset,
@@ -412,7 +417,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Performs the final deposit into the Steer LP.
+     * @notice Deposits balanced tokens into the Steer LP.
+     * @param assetForDeposit Amount of asset to deposit
      */
     function _performLpDeposit(uint256 assetForDeposit) internal {
         uint256 otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(
@@ -617,7 +623,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Set the deposit limit for the strategy
+     * @notice Sets the deposit limit for the strategy
      * @param _depositLimit New deposit limit
      */
     function setDepositLimit(uint256 _depositLimit) external onlyManagement {
@@ -625,7 +631,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Set the target idle asset percentage to maintain
+     * @notice Sets the target idle asset percentage in basis points
      * @param _targetIdleAssetBps Target idle asset percentage in basis points (e.g., 500 = 5%)
      */
     function setTargetIdleAssetBps(
@@ -636,7 +642,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Manually swap other token to asset
+     * @notice Manually swaps other token for asset
      * @param _amount Amount of other token to swap
      */
     function manualSwapOtherTokenToAsset(
@@ -655,7 +661,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Manually withdraw from LP position
+     * @notice Manually withdraws from LP position
      * @param _amount Amount of asset value to withdraw from LP
      */
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
@@ -664,13 +670,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /// @notice Initiates an auction for a given token
-    /// @dev Can only be called by keepers when auctions are enabled
-    /// @dev This function transfers tokens to the auction contract and kicks off a new auction
-    /// @dev Will fail if:
-    ///      1. Auctions are disabled or no auction contract is set
-    ///      2. The token is the strategy's asset or vault
-    ///      3. The token balance is below the configured minimum threshold
-    ///      4. The auction fails to start for any reason
+    /// @dev Transfers tokens to auction contract and starts auction
     /// @param _from The token to be sold in the auction
     /// @return The available amount for bidding on in the auction
     function kickAuction(
@@ -681,9 +681,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         return _amount;
     }
 
-    /// @notice Claims rewards for a given set of users (forwards to merkl distributor)
-    /// @dev Anyone may call this function for anyone else, funds go to destination regardless, it's just a question of
-    ///      who provides the proof and pays the gas: `msg.sender` is used only for addresses that require a trusted operator
+    /// @notice Claims rewards from Merkl distributor
     /// @param users Recipients of tokens
     /// @param tokens ERC20 tokens being claimed
     /// @param amounts Amounts of tokens that will be sent to the corresponding users
@@ -697,6 +695,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
 
+    /**
+     * @notice Attempts to kick an auction for a given token
+     * @param _auction The auction contract address
+     * @param _from The token to be sold in the auction
+     * @return success Whether the auction was successfully started
+     * @return amount The amount available for bidding
+     */
     function _tryKickAuction(
         address _auction,
         address _from
