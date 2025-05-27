@@ -14,13 +14,9 @@ import {IMerklDistributor} from "./interfaces/IMerklDistributor.sol";
 contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     using SafeERC20 for ERC20;
 
-    ISushiMultiPositionLiquidityManager public immutable STEER_LP;
-
-    address private immutable _POOL;
-    address private immutable _PAIRED_TOKEN;
-    bool private immutable _ASSET_IS_TOKEN_0;
-    uint256 private immutable _ASSET_DECIMALS;
-    uint256 private immutable _PAIRED_TOKEN_DECIMALS;
+    /*//////////////////////////////////////////////////////////////
+                            CONSTANTS
+    //////////////////////////////////////////////////////////////*/
 
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
@@ -28,6 +24,21 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice The Merkl Distributor contract for claiming rewards
     IMerklDistributor public constant MERKL_DISTRIBUTOR =
         IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
+
+    /*//////////////////////////////////////////////////////////////
+                          IMMUTABLE VARIABLES
+    //////////////////////////////////////////////////////////////*/
+
+    ISushiMultiPositionLiquidityManager public immutable STEER_LP;
+    address private immutable _POOL;
+    address private immutable _PAIRED_TOKEN;
+    bool private immutable _ASSET_IS_TOKEN_0;
+    uint256 private immutable _ASSET_DECIMALS;
+    uint256 private immutable _PAIRED_TOKEN_DECIMALS;
+
+    /*//////////////////////////////////////////////////////////////
+                          STATE VARIABLES
+    //////////////////////////////////////////////////////////////*/
 
     /// @notice Flag to enable using auctions for token swaps
     bool public useAuctions;
@@ -37,6 +48,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     uint16 public targetIdleAssetBps = 0; // Target idle asset in basis points
     uint256 public depositLimit = type(uint256).max;
+
+    /*//////////////////////////////////////////////////////////////
+                              STRUCTS
+    //////////////////////////////////////////////////////////////*/
 
     struct SwapCallbackData {
         address tokenToPay;
@@ -66,7 +81,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /*//////////////////////////////////////////////////////////////
-                NEEDED TO BE OVERRIDDEN BY STRATEGIST
+                         BASE STRATEGY OVERRIDES
     //////////////////////////////////////////////////////////////*/
 
     // @inheritdoc BaseStrategy
@@ -89,8 +104,46 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         _totalAssets = estimatedTotalAsset();
     }
 
+    // @inheritdoc BaseStrategy
+    function _tend(uint256 _totalIdle) internal override {
+        if (_totalIdle > 0) {
+            _depositInLp();
+        }
+    }
+
+    // @inheritdoc BaseStrategy
+    function _tendTrigger() internal view override returns (bool) {}
+
+    // @inheritdoc BaseStrategy
+    function _emergencyWithdraw(uint256 _amount) internal override {
+        _withdrawFromLp(_amount);
+    }
+
+    // @inheritdoc BaseStrategy
+    // Only return the loose asset balance
+    function availableWithdrawLimit(
+        address /*_owner*/
+    ) public view override returns (uint256) {
+        return asset.balanceOf(address(this));
+    }
+
+    // @inheritdoc BaseStrategy
+    function availableDepositLimit(
+        address _owner
+    ) public view override returns (uint256) {
+        uint256 baseLimit = super.availableDepositLimit(_owner);
+        uint256 currentAssets = TokenizedStrategy.totalAssets();
+
+        if (currentAssets >= depositLimit) {
+            return 0;
+        }
+
+        uint256 remainingCapacity = depositLimit - currentAssets;
+        return baseLimit < remainingCapacity ? baseLimit : remainingCapacity;
+    }
+
     /*//////////////////////////////////////////////////////////////
-                    VIEW FUNCTIONS
+                         VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     function estimatedTotalAsset() public view returns (uint256) {
@@ -220,43 +273,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         }
     }
 
-    // @inheritdoc BaseStrategy
-    // Only return the loose asset balance
-    function availableWithdrawLimit(
-        address /*_owner*/
-    ) public view override returns (uint256) {
-        return asset.balanceOf(address(this));
-    }
-
-    // @inheritdoc BaseStrategy
-    function availableDepositLimit(
-        address _owner
-    ) public view override returns (uint256) {
-        uint256 baseLimit = super.availableDepositLimit(_owner);
-        uint256 currentAssets = TokenizedStrategy.totalAssets();
-
-        if (currentAssets >= depositLimit) {
-            return 0;
-        }
-
-        uint256 remainingCapacity = depositLimit - currentAssets;
-        return baseLimit < remainingCapacity ? baseLimit : remainingCapacity;
-    }
-
-    // @inheritdoc BaseStrategy
-    function _tend(uint256 _totalIdle) internal override {
-        if (_totalIdle > 0) {
-            _depositInLp();
-        }
-    }
-
-    // @inheritdoc BaseStrategy
-    function _tendTrigger() internal view override returns (bool) {}
-
-    // @inheritdoc BaseStrategy
-    function _emergencyWithdraw(uint256 _amount) internal override {
-        _withdrawFromLp(_amount);
-    }
+    /*//////////////////////////////////////////////////////////////
+                         INTERNAL LOGIC
+    //////////////////////////////////////////////////////////////*/
 
     /**
      * @notice Calculates the amount of the strategy's asset to swap to achieve a balanced
@@ -552,6 +571,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         }
     }
 
+    /*//////////////////////////////////////////////////////////////
+                         UNISWAP V3 CALLBACK
+    //////////////////////////////////////////////////////////////*/
+
     // @inheritdoc IUniswapV3SwapCallback
     function uniswapV3SwapCallback(
         int256 amount0Delta,
@@ -603,6 +626,25 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                         MANAGEMENT FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @notice Sets the deposit limit for the strategy
+     * @param _depositLimit New deposit limit
+     */
+    function setDepositLimit(uint256 _depositLimit) external onlyManagement {
+        depositLimit = _depositLimit;
+    }
+
+    /**
+     * @notice Sets the target idle asset percentage in basis points
+     * @param _targetIdleAssetBps Target idle asset percentage in basis points (e.g., 500 = 5%)
+     */
+    function setTargetIdleAssetBps(
+        uint16 _targetIdleAssetBps
+    ) external onlyManagement {
+        require(_targetIdleAssetBps <= 10000, "Cannot exceed 100%");
+        targetIdleAssetBps = _targetIdleAssetBps;
+    }
+
     /// @notice Sets whether to use auctions for token swaps
     /// @param _useAuctions New value for useAuctions flag
     /// @dev Can only be called by management
@@ -627,25 +669,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             );
         }
         auction = _auction;
-    }
-
-    /**
-     * @notice Sets the deposit limit for the strategy
-     * @param _depositLimit New deposit limit
-     */
-    function setDepositLimit(uint256 _depositLimit) external onlyManagement {
-        depositLimit = _depositLimit;
-    }
-
-    /**
-     * @notice Sets the target idle asset percentage in basis points
-     * @param _targetIdleAssetBps Target idle asset percentage in basis points (e.g., 500 = 5%)
-     */
-    function setTargetIdleAssetBps(
-        uint16 _targetIdleAssetBps
-    ) external onlyManagement {
-        require(_targetIdleAssetBps <= 10000, "Cannot exceed 100%");
-        targetIdleAssetBps = _targetIdleAssetBps;
     }
 
     /**
@@ -676,6 +699,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         _withdrawFromLp(_amount);
     }
 
+    /*//////////////////////////////////////////////////////////////
+                        AUCTION FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
     /// @notice Initiates an auction for a given token
     /// @dev Transfers tokens to auction contract and starts auction
     /// @param _from The token to be sold in the auction
@@ -686,20 +713,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         (bool _success, uint256 _amount) = _tryKickAuction(auction, _from);
         require(_success, "!kick");
         return _amount;
-    }
-
-    /// @notice Claims rewards from Merkl distributor
-    /// @param users Recipients of tokens
-    /// @param tokens ERC20 tokens being claimed
-    /// @param amounts Amounts of tokens that will be sent to the corresponding users
-    /// @param proofs Array of Merkle proofs verifying the claims
-    function claim(
-        address[] calldata users,
-        address[] calldata tokens,
-        uint256[] calldata amounts,
-        bytes32[][] calldata proofs
-    ) external {
-        MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
 
     /**
@@ -727,5 +740,23 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         ERC20(_from).safeTransfer(_auction, _strategyBalance);
         uint256 _amountKicked = IAuction(_auction).kick(_from);
         return (_amountKicked != 0, _amountKicked);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        REWARDS FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /// @notice Claims rewards from Merkl distributor
+    /// @param users Recipients of tokens
+    /// @param tokens ERC20 tokens being claimed
+    /// @param amounts Amounts of tokens that will be sent to the corresponding users
+    /// @param proofs Array of Merkle proofs verifying the claims
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external {
+        MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
 }
