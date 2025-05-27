@@ -17,10 +17,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ISushiMultiPositionLiquidityManager public immutable STEER_LP;
 
     address private immutable _POOL;
-    address private immutable _OTHER_TOKEN;
+    address private immutable _PAIRED_TOKEN;
     bool private immutable _ASSET_IS_TOKEN_0;
     uint256 private immutable _ASSET_DECIMALS;
-    uint256 private immutable _OTHER_TOKEN_DECIMALS;
+    uint256 private immutable _PAIRED_TOKEN_DECIMALS;
 
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
@@ -54,13 +54,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             .token0();
         if (address(asset) == _token0) {
             _ASSET_IS_TOKEN_0 = true;
-            _OTHER_TOKEN = ISushiMultiPositionLiquidityManager(_steerLP)
+            _PAIRED_TOKEN = ISushiMultiPositionLiquidityManager(_steerLP)
                 .token1();
         } else {
-            _OTHER_TOKEN = _token0;
+            _PAIRED_TOKEN = _token0;
         }
         _ASSET_DECIMALS = asset.decimals();
-        _OTHER_TOKEN_DECIMALS = ERC20(_OTHER_TOKEN).decimals();
+        _PAIRED_TOKEN_DECIMALS = ERC20(_PAIRED_TOKEN).decimals();
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -93,14 +93,14 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     function estimatedTotalAsset() public view returns (uint256) {
         uint256 _assetBalance = asset.balanceOf(address(this));
-        uint256 _otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 _pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
-        uint256 _otherTokenBalanceInAsset = _valueOfOtherTokenInAsset(
-            _otherTokenBalance
+        uint256 _pairedTokenBalanceInAsset = _valueOfPairedTokenInAsset(
+            _pairedTokenBalance
         );
         uint256 _lpBalanceInAsset = lpVaultInAsset();
-        return _assetBalance + _otherTokenBalanceInAsset + _lpBalanceInAsset;
+        return _assetBalance + _pairedTokenBalanceInAsset + _lpBalanceInAsset;
     }
 
     /**
@@ -134,61 +134,58 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             totalLpShares
         );
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
-        uint256 valueOtherTokenInAsset;
+        uint256 valuePairedTokenInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
-            valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
+            valuePairedTokenInAsset = _valueOfPairedTokenInAsset(
                 balanceOfToken1InLp,
                 sqrtPriceX96
             );
-            valueLpInAssetTerms = balanceOfToken0InLp + valueOtherTokenInAsset;
+            valueLpInAssetTerms = balanceOfToken0InLp + valuePairedTokenInAsset;
         } else {
-            valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
+            valuePairedTokenInAsset = _valueOfPairedTokenInAsset(
                 balanceOfToken0InLp,
                 sqrtPriceX96
             );
-            valueLpInAssetTerms = balanceOfToken1InLp + valueOtherTokenInAsset;
+            valueLpInAssetTerms = balanceOfToken1InLp + valuePairedTokenInAsset;
         }
     }
 
     /**
-     * @notice Calculates the value of the other token in terms of the strategy's asset using current pool price.
-     * @param amountOfOtherToken The amount of the other token
+     * @notice Calculates the value of the paired token in terms of the strategy's asset using current pool price.
+     * @param amountOfPairedToken The amount of the paired token
      * @return value The calculated value in terms of the strategy's asset
      */
-    function _valueOfOtherTokenInAsset(
-        uint256 amountOfOtherToken
+    function _valueOfPairedTokenInAsset(
+        uint256 amountOfPairedToken
     ) internal view returns (uint256 value) {
-        if (amountOfOtherToken == 0) return 0;
+        if (amountOfPairedToken == 0) return 0;
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
-        return _valueOfOtherTokenInAsset(amountOfOtherToken, sqrtPriceX96);
+        return _valueOfPairedTokenInAsset(amountOfPairedToken, sqrtPriceX96);
     }
 
     /**
-     * @notice Calculates the value of a given amount of the "other token" (not the strategy's asset)
-     *         in terms of the strategy's underlying asset.
-     * @dev This function uses the provided sqrtPriceX96 to convert the value of the other token
-     *      to the asset's denomination, accounting for decimal differences.
-     * @param amountOfOtherToken The amount of the other token.
-     * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool.
-     * @return value The calculated value in terms of the strategy's asset.
+     * @notice Calculates the value of the paired token in terms of the strategy's asset.
+     * @param amountOfPairedToken The amount of the paired token
+     * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool
+     * @return value The calculated value in terms of the strategy's asset
      */
-    function _valueOfOtherTokenInAsset(
-        uint256 amountOfOtherToken,
+    function _valueOfPairedTokenInAsset(
+        uint256 amountOfPairedToken,
         uint160 sqrtPriceX96
     ) internal view returns (uint256 value) {
-        if (amountOfOtherToken == 0) return 0;
+        if (amountOfPairedToken == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
             // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
             value = FullMath.mulDiv(
-                amountOfOtherToken,
+                amountOfPairedToken,
                 Q96,
                 FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
             );
         } else {
             // Convert token0 to token1: amount0 * (sqrtPriceX96^2 / Q96^2)
             value = FullMath.mulDiv(
-                FullMath.mulDiv(amountOfOtherToken, sqrtPriceX96, Q96),
+                FullMath.mulDiv(amountOfPairedToken, sqrtPriceX96, Q96),
                 sqrtPriceX96,
                 Q96
             );
@@ -196,25 +193,24 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Converts a value expressed in the strategy's asset terms back into a quantity of _OTHER_TOKEN.
-     * @dev This is effectively the inverse of `_valueOfOtherTokenInAsset` for a given price.
-     * @param _valueInAssetTerms The value denominated in the strategy's primary asset.
-     * @param _sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool.
-     * @return _amountOfOtherToken The corresponding quantity of _OTHER_TOKEN.
+     * @notice Converts asset value to paired token quantity (inverse of _valueOfPairedTokenInAsset).
+     * @param _valueInAssetTerms The value denominated in the strategy's primary asset
+     * @param _sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool
+     * @return _amountOfPairedToken The corresponding quantity of paired token
      */
-    function _convertAssetValueToOtherTokenQuantity(
+    function _convertAssetValueToPairedTokenQuantity(
         uint256 _valueInAssetTerms,
         uint160 _sqrtPriceX96
-    ) internal view returns (uint256 _amountOfOtherToken) {
+    ) internal view returns (uint256 _amountOfPairedToken) {
         if (_valueInAssetTerms == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
-            _amountOfOtherToken = FullMath.mulDiv(
+            _amountOfPairedToken = FullMath.mulDiv(
                 _valueInAssetTerms,
                 FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
                 Q96
             );
         } else {
-            _amountOfOtherToken = FullMath.mulDiv(
+            _amountOfPairedToken = FullMath.mulDiv(
                 _valueInAssetTerms,
                 Q96,
                 FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96)
@@ -280,23 +276,23 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         if (total0InLp == 0 && total1InLp == 0) {
             amountToSwap = assetBalance / 2; // LP is empty, aim for 50/50 split
         } else {
-            uint256 otherTokenValueInAsset;
+            uint256 pairedTokenValueInAsset;
             uint256 totalLpValueInAsset;
 
             if (_ASSET_IS_TOKEN_0) {
-                otherTokenValueInAsset = FullMath.mulDiv(
+                pairedTokenValueInAsset = FullMath.mulDiv(
                     total1InLp,
                     Q96,
                     FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
                 );
-                totalLpValueInAsset = total0InLp + otherTokenValueInAsset;
+                totalLpValueInAsset = total0InLp + pairedTokenValueInAsset;
             } else {
-                otherTokenValueInAsset = FullMath.mulDiv(
+                pairedTokenValueInAsset = FullMath.mulDiv(
                     FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
                     sqrtPriceX96,
                     Q96
                 );
-                totalLpValueInAsset = total1InLp + otherTokenValueInAsset;
+                totalLpValueInAsset = total1InLp + pairedTokenValueInAsset;
             }
 
             if (totalLpValueInAsset == 0) {
@@ -305,7 +301,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 // Calculate swap amount to match LP's token value ratio
                 amountToSwap = FullMath.mulDiv(
                     assetBalance,
-                    otherTokenValueInAsset,
+                    pairedTokenValueInAsset,
                     totalLpValueInAsset
                 );
             }
@@ -313,10 +309,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Swaps asset for other token via Uniswap V3 pool.
+     * @notice Swaps asset for paired token via Uniswap V3 pool.
      * @param amountToSwap The amount of asset to swap
      */
-    function _swapAssetForOtherToken(uint256 amountToSwap) internal {
+    function _swapAssetForPairedToken(uint256 amountToSwap) internal {
         SwapCallbackData memory callbackData = SwapCallbackData(
             address(asset),
             amountToSwap
@@ -343,12 +339,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Swaps other token for asset via Uniswap V3 pool.
-     * @param amountToSwap The amount of other token to swap
+     * @notice Swaps paired token for asset via Uniswap V3 pool.
+     * @param amountToSwap The amount of paired token to swap
      */
-    function _swapOtherTokenForAsset(uint256 amountToSwap) internal {
+    function _swapPairedTokenForAsset(uint256 amountToSwap) internal {
         SwapCallbackData memory callbackData = SwapCallbackData(
-            address(_OTHER_TOKEN),
+            address(_PAIRED_TOKEN),
             amountToSwap
         );
         bytes memory data = abi.encode(callbackData);
@@ -374,44 +370,44 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     /**
      * @notice Performs rebalancing swaps to achieve target token allocation for LP deposit.
-     * @param currentOtherTokenValueInAsset Current value of other token holdings in asset terms
-     * @param targetOtherTokenValueInAsset Target value of other token holdings in asset terms
+     * @param currentPairedTokenValueInAsset Current value of paired token holdings in asset terms
+     * @param targetPairedTokenValueInAsset Target value of paired token holdings in asset terms
      * @param assetBalance Current asset balance
-     * @param otherTokenBalance Current other token balance
+     * @param pairedTokenBalance Current paired token balance
      * @param sqrtPriceX96 Current pool price
      */
     function _performRebalancingSwap(
-        uint256 currentOtherTokenValueInAsset,
-        uint256 targetOtherTokenValueInAsset,
+        uint256 currentPairedTokenValueInAsset,
+        uint256 targetPairedTokenValueInAsset,
         uint256 assetBalance,
-        uint256 otherTokenBalance,
+        uint256 pairedTokenBalance,
         uint160 sqrtPriceX96
     ) internal {
-        if (targetOtherTokenValueInAsset > currentOtherTokenValueInAsset) {
-            // Need more other token
-            uint256 assetValueToSwap = targetOtherTokenValueInAsset -
-                currentOtherTokenValueInAsset;
+        if (targetPairedTokenValueInAsset > currentPairedTokenValueInAsset) {
+            // Need more paired token
+            uint256 assetValueToSwap = targetPairedTokenValueInAsset -
+                currentPairedTokenValueInAsset;
             if (assetValueToSwap > assetBalance) {
                 assetValueToSwap = assetBalance;
             }
             if (assetValueToSwap > 0) {
-                _swapAssetForOtherToken(assetValueToSwap);
+                _swapAssetForPairedToken(assetValueToSwap);
             }
         } else if (
-            currentOtherTokenValueInAsset > targetOtherTokenValueInAsset
+            currentPairedTokenValueInAsset > targetPairedTokenValueInAsset
         ) {
-            // Have excess other token
-            uint256 excessOtherTokenValueInAsset = currentOtherTokenValueInAsset -
-                    targetOtherTokenValueInAsset;
-            uint256 otherTokenQuantityToSwap = _convertAssetValueToOtherTokenQuantity(
-                    excessOtherTokenValueInAsset,
+            // Have excess paired token
+            uint256 excessPairedTokenValueInAsset = currentPairedTokenValueInAsset -
+                    targetPairedTokenValueInAsset;
+            uint256 pairedTokenQuantityToSwap = _convertAssetValueToPairedTokenQuantity(
+                    excessPairedTokenValueInAsset,
                     sqrtPriceX96
                 );
-            if (otherTokenQuantityToSwap > otherTokenBalance) {
-                otherTokenQuantityToSwap = otherTokenBalance;
+            if (pairedTokenQuantityToSwap > pairedTokenBalance) {
+                pairedTokenQuantityToSwap = pairedTokenBalance;
             }
-            if (otherTokenQuantityToSwap > 0) {
-                _swapOtherTokenForAsset(otherTokenQuantityToSwap);
+            if (pairedTokenQuantityToSwap > 0) {
+                _swapPairedTokenForAsset(pairedTokenQuantityToSwap);
             }
         }
     }
@@ -421,14 +417,14 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param assetForDeposit Amount of asset to deposit
      */
     function _performLpDeposit(uint256 assetForDeposit) internal {
-        uint256 otherTokenBalanceForDeposit = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 pairedTokenBalanceForDeposit = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
 
         asset.forceApprove(address(STEER_LP), assetForDeposit);
-        ERC20(_OTHER_TOKEN).forceApprove(
+        ERC20(_PAIRED_TOKEN).forceApprove(
             address(STEER_LP),
-            otherTokenBalanceForDeposit
+            pairedTokenBalanceForDeposit
         );
 
         uint256 token0DepositAmount;
@@ -436,9 +432,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         if (_ASSET_IS_TOKEN_0) {
             token0DepositAmount = assetForDeposit;
-            token1DepositAmount = otherTokenBalanceForDeposit;
+            token1DepositAmount = pairedTokenBalanceForDeposit;
         } else {
-            token0DepositAmount = otherTokenBalanceForDeposit;
+            token0DepositAmount = pairedTokenBalanceForDeposit;
             token1DepositAmount = assetForDeposit;
         }
 
@@ -460,7 +456,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      */
     function _depositInLp() internal {
         uint256 assetBalance = asset.balanceOf(address(this));
-        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
 
@@ -482,30 +478,30 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
 
-        uint256 otherTokenValueInAsset = _valueOfOtherTokenInAsset(
-            otherTokenBalance,
+        uint256 pairedTokenValueInAsset = _valueOfPairedTokenInAsset(
+            pairedTokenBalance,
             sqrtPriceX96
         );
         uint256 totalDepositValueInAsset = availableForDeposit +
-            otherTokenValueInAsset;
+            pairedTokenValueInAsset;
 
         if (totalDepositValueInAsset == 0) return;
 
         (uint256 lpToken0Balance, uint256 lpToken1Balance) = STEER_LP
             .getTotalAmounts();
 
-        uint256 targetOtherTokenValueInAsset = _calculateAmountToSwapForDeposit(
-            totalDepositValueInAsset,
-            lpToken0Balance,
-            lpToken1Balance,
-            sqrtPriceX96
-        );
+        uint256 targetPairedTokenValueInAsset = _calculateAmountToSwapForDeposit(
+                totalDepositValueInAsset,
+                lpToken0Balance,
+                lpToken1Balance,
+                sqrtPriceX96
+            );
 
         _performRebalancingSwap(
-            otherTokenValueInAsset,
-            targetOtherTokenValueInAsset,
+            pairedTokenValueInAsset,
+            targetPairedTokenValueInAsset,
             availableForDeposit,
-            otherTokenBalance,
+            pairedTokenBalance,
             sqrtPriceX96
         );
 
@@ -545,12 +541,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         STEER_LP.withdraw(sharesToWithdraw, 0, 0, address(this));
 
-        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
 
-        if (otherTokenBalance > 0) {
-            _swapOtherTokenForAsset(otherTokenBalance);
+        if (pairedTokenBalance > 0) {
+            _swapPairedTokenForAsset(pairedTokenBalance);
         }
     }
 
@@ -573,7 +569,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
                 amountPaid = uint256(amount0Delta);
                 require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
-            } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
+            } else if (callbackData.tokenToPay == _PAIRED_TOKEN) {
                 require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
                 amountPaid = uint256(amount1Delta);
                 require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
@@ -585,7 +581,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
                 amountPaid = uint256(amount1Delta);
                 require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
-            } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
+            } else if (callbackData.tokenToPay == _PAIRED_TOKEN) {
                 require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
                 amountPaid = uint256(amount0Delta);
                 require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
@@ -642,22 +638,22 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /**
-     * @notice Manually swaps other token for asset
-     * @param _amount Amount of other token to swap
+     * @notice Manually swaps paired token for asset
+     * @param _amount Amount of paired token to swap
      */
-    function manualSwapOtherTokenToAsset(
+    function manualSwapPairedTokenToAsset(
         uint256 _amount
     ) external onlyManagement {
         require(_amount > 0, "Amount must be greater than 0");
-        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+        uint256 pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
         require(
-            _amount <= otherTokenBalance,
-            "Insufficient other token balance"
+            _amount <= pairedTokenBalance,
+            "Insufficient paired token balance"
         );
 
-        _swapOtherTokenForAsset(_amount);
+        _swapPairedTokenForAsset(_amount);
     }
 
     /**
