@@ -26,26 +26,21 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     uint256 private constant Q96 = 0x1000000000000000000000000;
 
     /// @notice The Merkl Distributor contract for claiming rewards
-    /// @dev Hardcoded address of the official Merkl distributor
     IMerklDistributor public constant MERKL_DISTRIBUTOR =
         IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
 
     /// @notice Flag to enable using auctions for token swaps
-    /// @dev When true, uses auction-based swapping mechanism for reward tokens
     bool public useAuctions;
 
     /// @notice Address of the auction contract used for token swaps
-    /// @dev Used when useAuctions is true
-    /// @dev Must be properly validated with matching want/receiver addresses
     address public auction;
 
-    // Management parameters
-    uint16 public targetIdleAssetBps = 0; // Target idle asset as percentage in basis points (e.g., 500 = 5%)
+    uint16 public targetIdleAssetBps = 0; // Target idle asset in basis points
     uint256 public depositLimit = type(uint256).max;
 
     struct SwapCallbackData {
         address tokenToPay;
-        uint256 amountToPay; // The amount the strategy intends to pay
+        uint256 amountToPay;
     }
 
     constructor(
@@ -126,7 +121,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
         uint256 totalLpShares = STEER_LP.totalSupply();
-        if (totalLpShares == 0) return 0; // this should never happen
+        if (totalLpShares == 0) return 0;
 
         uint256 balanceOfToken0InLp = FullMath.mulDiv(
             balanceOfLpShares,
@@ -142,14 +137,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 valueOtherTokenInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
-            // asset is token0 (e.g., USDC). Other is token1 (e.g., DAI).
             valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
                 balanceOfToken1InLp,
                 sqrtPriceX96
             );
             valueLpInAssetTerms = balanceOfToken0InLp + valueOtherTokenInAsset;
         } else {
-            // asset is token1 (e.g., DAI). Other is token0 (e.g., USDC).
             valueOtherTokenInAsset = _valueOfOtherTokenInAsset(
                 balanceOfToken0InLp,
                 sqrtPriceX96
@@ -181,8 +174,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 value) {
         if (amountOfOtherToken == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
-            // asset is token0. Other is token1.
-            // value is value of otherToken (token1) holdings in asset (token0) terms (unscaled)
             // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
             value = FullMath.mulDiv(
                 amountOfOtherToken,
@@ -190,8 +181,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
             );
         } else {
-            // asset is token1. Other is token0.
-            // value is value of otherToken (token0) holdings in asset (token1) terms (unscaled)
+            // Convert token0 to token1: amount0 * (sqrtPriceX96^2 / Q96^2)
             value = FullMath.mulDiv(
                 FullMath.mulDiv(amountOfOtherToken, sqrtPriceX96, Q96),
                 sqrtPriceX96,
@@ -213,34 +203,22 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 _amountOfOtherToken) {
         if (_valueInAssetTerms == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
-            // asset is token0. Other is token1.
-            // We have value in token0 terms, want quantity of token1.
-            // Derivation:
-            // value_asset (token0) = amountOther (token1) * Q96^2 / sqrtPriceX96^2
-            // So, amountOther (token1) = value_asset (token0) * sqrtPriceX96^2 / Q96^2
-            // sqrtPriceX96^2 / Q96^2  == (sqrtPriceX96 * sqrtPriceX96 / Q96) / Q96
             _amountOfOtherToken = FullMath.mulDiv(
-                _valueInAssetTerms, // value_asset (token0)
-                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96), // sqrtPriceX96^2 / Q96
-                Q96 // Effectively dividing by Q96 again: (sqrtPriceX96^2 / Q96) / Q96 = sqrtPriceX96^2 / Q96^2
+                _valueInAssetTerms,
+                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
+                Q96
             );
         } else {
-            // asset is token1. Other is token0.
-            // We have value in token1 terms, want quantity of token0.
-            // Derivation:
-            // value_asset (token1) = amountOther (token0) * sqrtPriceX96^2 / Q96^2
-            // So, amountOther (token0) = value_asset (token1) * Q96^2 / sqrtPriceX96^2
-            // Q96^2 / sqrtPriceX96^2 == Q96 / (sqrtPriceX96 * sqrtPriceX96 / Q96)
             _amountOfOtherToken = FullMath.mulDiv(
-                _valueInAssetTerms, // value_asset (token1)
+                _valueInAssetTerms,
                 Q96,
-                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96) // sqrtPriceX96^2 / Q96
+                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96)
             );
         }
     }
 
     // @inheritdoc BaseStrategy
-    // @dev only return the loose asset balance
+    // Only return the loose asset balance
     function availableWithdrawLimit(
         address /*_owner*/
     ) public view override returns (uint256) {
@@ -295,39 +273,31 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint160 sqrtPriceX96
     ) internal view returns (uint256 amountToSwap) {
         if (total0InLp == 0 && total1InLp == 0) {
-            amountToSwap = assetBalance / 2; // Fallback: LP is empty, aim for a 50/50 value split by swapping half the asset.
+            amountToSwap = assetBalance / 2; // LP is empty, aim for 50/50 split
         } else {
             uint256 otherTokenValueInAsset;
             uint256 totalLpValueInAsset;
 
             if (_ASSET_IS_TOKEN_0) {
-                // Asset is token0. Other token is token1.
-                // otherTokenValueInAsset is value of LP's token1 holdings, in terms of token0 (asset), unscaled.
-                // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
                 otherTokenValueInAsset = FullMath.mulDiv(
                     total1InLp,
                     Q96,
                     FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
                 );
-                // total0InLp is already in asset's (token0) decimals.
                 totalLpValueInAsset = total0InLp + otherTokenValueInAsset;
             } else {
-                // Asset is token1. Other token is token0.
-                // otherTokenValueInAsset is value of LP's token0 holdings, in terms of token1 (asset), unscaled.
                 otherTokenValueInAsset = FullMath.mulDiv(
                     FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
                     sqrtPriceX96,
                     Q96
                 );
-                // total1InLp is already in asset's (token1) decimals.
                 totalLpValueInAsset = total1InLp + otherTokenValueInAsset;
             }
 
             if (totalLpValueInAsset == 0) {
-                amountToSwap = assetBalance / 2; // Fallback: Total LP value is zero, aim for 50/50.
+                amountToSwap = assetBalance / 2; // Fallback: aim for 50/50
             } else {
-                // Calculate how much of our asset to swap to get the "other token"
-                // in proportion to its value representation in the LP.
+                // Calculate swap amount to match LP's token value ratio
                 amountToSwap = FullMath.mulDiv(
                     assetBalance,
                     otherTokenValueInAsset,
@@ -349,7 +319,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         bytes memory data = abi.encode(callbackData);
 
         if (_ASSET_IS_TOKEN_0) {
-            // Selling asset (token0) for _OTHER_TOKEN (token1)
             IUniswapV3Pool(_POOL).swap(
                 address(this),
                 true,
@@ -358,7 +327,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 data
             );
         } else {
-            // Selling asset (token1) for _OTHER_TOKEN (token0)
             IUniswapV3Pool(_POOL).swap(
                 address(this),
                 false,
@@ -381,7 +349,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         bytes memory data = abi.encode(callbackData);
 
         if (_ASSET_IS_TOKEN_0) {
-            // Selling _OTHER_TOKEN (token1) for asset (token0)
             IUniswapV3Pool(_POOL).swap(
                 address(this),
                 false,
@@ -390,7 +357,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 data
             );
         } else {
-            // Selling _OTHER_TOKEN (token0) for asset (token1)
             IUniswapV3Pool(_POOL).swap(
                 address(this),
                 true,
@@ -417,7 +383,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint160 sqrtPriceX96
     ) internal {
         if (targetOtherTokenValueInAsset > currentOtherTokenValueInAsset) {
-            // Need more other token - swap asset for other token
+            // Need more other token
             uint256 assetValueToSwap = targetOtherTokenValueInAsset -
                 currentOtherTokenValueInAsset;
             if (assetValueToSwap > assetBalance) {
@@ -429,7 +395,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         } else if (
             currentOtherTokenValueInAsset > targetOtherTokenValueInAsset
         ) {
-            // Have excess other token - swap other token for asset
+            // Have excess other token
             uint256 excessOtherTokenValueInAsset = currentOtherTokenValueInAsset -
                     targetOtherTokenValueInAsset;
             uint256 otherTokenQuantityToSwap = _convertAssetValueToOtherTokenQuantity(
@@ -495,16 +461,16 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 availableForDeposit = assetBalance;
         uint256 targetIdleAmount;
 
-        // Apply idle asset target if configured
+        // Apply idle asset target
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             targetIdleAmount = (totalAssets * _targetIdleAssetBps) / 10000;
 
-            // Only deposit if we have more than the target idle amount
+            // Only deposit if above target idle amount
             if (assetBalance <= targetIdleAmount) return;
 
-            // Calculate amount available for deposit (maintaining idle target)
+            // Calculate amount available for deposit
             availableForDeposit = assetBalance - targetIdleAmount;
         }
 
@@ -597,32 +563,26 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 amountPaid;
 
         if (_ASSET_IS_TOKEN_0) {
-            // asset is token0, _OTHER_TOKEN is token1
             if (callbackData.tokenToPay == address(asset)) {
-                // Paying token0 (asset) to pool
-                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
+                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
                 amountPaid = uint256(amount0Delta);
-                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
+                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
             } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
-                // Paying token1 (_OTHER_TOKEN) to pool
-                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
+                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
                 amountPaid = uint256(amount1Delta);
-                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
+                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
         } else {
-            // asset is token1, _OTHER_TOKEN is token0
             if (callbackData.tokenToPay == address(asset)) {
-                // Paying token1 (asset) to pool
-                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0"); // Pool received token1
+                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
                 amountPaid = uint256(amount1Delta);
-                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0"); // Pool sent token0
+                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
             } else if (callbackData.tokenToPay == _OTHER_TOKEN) {
-                // Paying token0 (_OTHER_TOKEN) to pool
-                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0"); // Pool received token0
+                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
                 amountPaid = uint256(amount0Delta);
-                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0"); // Pool sent token1
+                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
             } else {
                 revert("Strategy: Invalid tokenToPay in callback");
             }
@@ -741,17 +701,17 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         address _auction,
         address _from
     ) internal virtual returns (bool, uint256) {
-        if (!useAuctions || _auction == address(0)) return (false, 0); // auctions not enabled
+        if (!useAuctions || _auction == address(0)) return (false, 0);
         if (_from == address(asset) || _from == address(STEER_LP))
-            return (false, 0); // don't kick asset or vault tokens
+            return (false, 0);
         if (
             IAuction(_auction).isActive(address(asset)) ||
             IAuction(_auction).available(address(asset)) != 0
-        ) return (false, 0); // auction is active
+        ) return (false, 0);
         uint256 _strategyBalance = ERC20(_from).balanceOf(address(this));
         uint256 _totalBalance = _strategyBalance +
             ERC20(_from).balanceOf(_auction);
-        if (_totalBalance == 0) return (false, 0); // no tokens to auction
+        if (_totalBalance == 0) return (false, 0);
         ERC20(_from).safeTransfer(_auction, _strategyBalance);
         uint256 _amountKicked = IAuction(_auction).kick(_from);
         return (_amountKicked != 0, _amountKicked);
