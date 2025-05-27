@@ -52,11 +52,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         _POOL = ISushiMultiPositionLiquidityManager(_steerLP).pool();
         address _token0 = ISushiMultiPositionLiquidityManager(_steerLP)
             .token0();
+        address _token1 = ISushiMultiPositionLiquidityManager(_steerLP)
+            .token1();
         if (address(asset) == _token0) {
             _ASSET_IS_TOKEN_0 = true;
-            _PAIRED_TOKEN = ISushiMultiPositionLiquidityManager(_steerLP)
-                .token1();
+            _PAIRED_TOKEN = _token1;
         } else {
+            require(address(asset) == _token1);
             _PAIRED_TOKEN = _token0;
         }
         _ASSET_DECIMALS = asset.decimals();
