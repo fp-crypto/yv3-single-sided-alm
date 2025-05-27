@@ -23,6 +23,10 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
 
+    // Management parameters
+    uint256 public depositLimit = type(uint256).max;
+    uint256 public targetIdleAssetBps = 0; // Target idle asset as percentage in basis points (e.g., 500 = 5%)
+
     struct SwapCallbackData {
         address tokenToPay;
         uint256 amountToPay; // The amount the strategy intends to pay
@@ -237,8 +241,15 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
     function availableDepositLimit(
         address _owner
     ) public view override returns (uint256) {
-        // TODO: come up with some heuristic
-        return super.availableDepositLimit(_owner);
+        uint256 baseLimit = super.availableDepositLimit(_owner);
+        uint256 currentAssets = TokenizedStrategy.totalAssets();
+
+        if (currentAssets >= depositLimit) {
+            return 0;
+        }
+
+        uint256 remainingCapacity = depositLimit - currentAssets;
+        return baseLimit < remainingCapacity ? baseLimit : remainingCapacity;
     }
 
     // @inheritdoc BaseStrategy
@@ -594,5 +605,56 @@ contract Strategy is BaseStrategy, IUniswapV3SwapCallback {
             "Strategy: Paid amount mismatch"
         );
         ERC20(callbackData.tokenToPay).safeTransfer(_POOL, amountPaid);
+    }
+
+    /*//////////////////////////////////////////////////////////////
+                        MANAGEMENT FUNCTIONS
+    //////////////////////////////////////////////////////////////*/
+
+    /**
+     * @notice Set the deposit limit for the strategy
+     * @param _depositLimit New deposit limit
+     */
+    function setDepositLimit(uint256 _depositLimit) external onlyManagement {
+        depositLimit = _depositLimit;
+    }
+
+    /**
+     * @notice Set the target idle asset percentage to maintain
+     * @param _targetIdleAssetBps Target idle asset percentage in basis points (e.g., 500 = 5%)
+     */
+    function setTargetIdleAssetBps(
+        uint256 _targetIdleAssetBps
+    ) external onlyManagement {
+        require(_targetIdleAssetBps <= 10000, "Cannot exceed 100%");
+        targetIdleAssetBps = _targetIdleAssetBps;
+    }
+
+    /**
+     * @notice Manually swap other token to asset
+     * @param _amount Amount of other token to swap
+     */
+    function manualSwapOtherTokenToAsset(
+        uint256 _amount
+    ) external onlyManagement {
+        require(_amount > 0, "Amount must be greater than 0");
+        uint256 otherTokenBalance = ERC20(_OTHER_TOKEN).balanceOf(
+            address(this)
+        );
+        require(
+            _amount <= otherTokenBalance,
+            "Insufficient other token balance"
+        );
+
+        _swapOtherTokenForAsset(_amount);
+    }
+
+    /**
+     * @notice Manually withdraw from LP position
+     * @param _amount Amount of asset value to withdraw from LP
+     */
+    function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
+        require(_amount > 0, "Amount must be greater than 0");
+        _withdrawFromLp(_amount);
     }
 }
