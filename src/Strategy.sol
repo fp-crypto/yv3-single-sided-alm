@@ -3,12 +3,13 @@ pragma solidity ^0.8.18;
 
 import {BaseHealthCheck, ERC20} from "@periphery/Bases/HealthCheck/BaseHealthCheck.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IAuction} from "./interfaces/IAuction.sol";
 import {ISushiMultiPositionLiquidityManager} from "./interfaces/steer/ISushiMultiPositionLiquidityManager.sol";
 import {IUniswapV3SwapCallback} from "@uniswap-v3-core/interfaces/callback/IUniswapV3SwapCallback.sol";
 import {IUniswapV3Pool} from "@uniswap-v3-core/interfaces/IUniswapV3Pool.sol";
 import {FullMath} from "@uniswap-v3-core/libraries/FullMath.sol";
 import {TickMath} from "@uniswap-v3-core/libraries/TickMath.sol";
+import {IAuction} from "./interfaces/IAuction.sol";
+import {IMerklDistributor} from "./interfaces/IMerklDistributor.sol";
 
 contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     using SafeERC20 for ERC20;
@@ -23,6 +24,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     // Q96 constant (2**96)
     uint256 private constant Q96 = 0x1000000000000000000000000;
+
+    /// @notice The Merkl Distributor contract for claiming rewards
+    /// @dev Hardcoded address of the official Merkl distributor
+    IMerklDistributor public constant MERKL_DISTRIBUTOR =
+        IMerklDistributor(0x3Ef3D8bA38EBe18DB133cEc108f4D14CE00Dd9Ae);
 
     /// @notice Flag to enable using auctions for token swaps
     /// @dev When true, uses auction-based swapping mechanism for reward tokens
@@ -711,6 +717,22 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         (bool _success, uint256 _amount) = _tryKickAuction(auction, _from);
         require(_success, "!kick");
         return _amount;
+    }
+
+    /// @notice Claims rewards for a given set of users (forwards to merkl distributor)
+    /// @dev Anyone may call this function for anyone else, funds go to destination regardless, it's just a question of
+    ///      who provides the proof and pays the gas: `msg.sender` is used only for addresses that require a trusted operator
+    /// @param users Recipients of tokens
+    /// @param tokens ERC20 tokens being claimed
+    /// @param amounts Amounts of tokens that will be sent to the corresponding users
+    /// @param proofs Array of Merkle proofs verifying the claims
+    function claim(
+        address[] calldata users,
+        address[] calldata tokens,
+        uint256[] calldata amounts,
+        bytes32[][] calldata proofs
+    ) external {
+        MERKL_DISTRIBUTOR.claim(users, tokens, amounts, proofs);
     }
 
     function _tryKickAuction(
