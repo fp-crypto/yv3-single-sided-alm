@@ -149,6 +149,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                          VIEW FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
+    /**
+     * @notice Estimates the total value of all strategy holdings in asset terms
+     * @return Total estimated value including loose tokens and LP positions
+     * @dev Sums loose asset balance, paired token value, and LP position value
+     *      all denominated in the strategy's primary asset
+     */
     function estimatedTotalAsset() public view returns (uint256) {
         uint256 _assetBalance = asset.balanceOf(address(this));
         uint256 _pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
@@ -670,27 +676,31 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         targetIdleAssetBps = _targetIdleAssetBps;
     }
 
-    /// @notice Sets whether to use auctions for token swaps
-    /// @param _useAuctions New value for useAuctions flag
-    /// @dev Can only be called by management
-    /// @dev When enabled, the strategy will attempt to kick auctions during harvest
-    /// @dev When disabled, the strategy will not use auctions and rewards will accumulate
+    /**
+     * @notice Sets whether to use auctions for token swaps
+     * @param _useAuctions New value for useAuctions flag
+     * @dev Can only be called by management
+     * @dev When enabled, the strategy will attempt to kick auctions during harvest
+     * @dev When disabled, the strategy will not use auctions and rewards will accumulate
+     */
     function setUseAuctions(bool _useAuctions) external onlyManagement {
         useAuctions = _useAuctions;
     }
 
-    /// @notice Sets the auction contract address
-    /// @param _auction Address of the auction contract
-    /// @dev Can only be called by management
-    /// @dev Verifies the auction contract is compatible with this strategy by:
-    ///      1. Checking that auction's want matches the strategy's asset
-    ///      2. Ensuring the auction contract's receiver is this strategy
+    /**
+     * @notice Sets the auction contract address
+     * @param _auction Address of the auction contract
+     * @dev Can only be called by management
+     * @dev Verifies the auction contract is compatible with this strategy by:
+     *      1. Checking that auction's want matches the strategy's asset
+     *      2. Ensuring the auction contract's receiver is this strategy
+     */
     function setAuction(address _auction) external onlyManagement {
         if (_auction != address(0)) {
-            require(IAuction(_auction).want() == address(asset), "!want");
+            require(IAuction(_auction).want() == address(asset), "Strategy: Auction want mismatch");
             require(
                 IAuction(_auction).receiver() == address(this),
-                "!receiver"
+                "Strategy: Auction receiver mismatch"
             );
         }
         auction = _auction;
@@ -703,13 +713,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function manualSwapPairedTokenToAsset(
         uint256 _amount
     ) external onlyManagement {
-        require(_amount > 0, "Amount must be greater than 0");
+        require(_amount > 0, "Strategy: Amount must be greater than 0");
         uint256 pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
         require(
             _amount <= pairedTokenBalance,
-            "Insufficient paired token balance"
+            "Strategy: Insufficient paired token balance"
         );
 
         _swapPairedTokenForAsset(_amount);
@@ -720,7 +730,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param _amount Amount of asset value to withdraw from LP
      */
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
-        require(_amount > 0, "Amount must be greater than 0");
+        require(_amount > 0, "Strategy: Amount must be greater than 0");
+        uint256 lpValue = lpVaultInAsset();
+        require(_amount <= lpValue, "Strategy: Amount exceeds LP value");
         _withdrawFromLp(_amount);
     }
 
@@ -728,10 +740,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                         AUCTION FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Initiates an auction for a given token
-    /// @dev Transfers tokens to auction contract and starts auction
-    /// @param _from The token to be sold in the auction
-    /// @return The available amount for bidding on in the auction
+    /**
+     * @notice Initiates an auction for a given token
+     * @dev Transfers tokens to auction contract and starts auction
+     * @param _from The token to be sold in the auction
+     * @return The available amount for bidding on in the auction
+     */
     function kickAuction(
         address _from
     ) external virtual onlyManagement returns (uint256) {
@@ -771,11 +785,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                         REWARDS FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
-    /// @notice Claims rewards from Merkl distributor
-    /// @param users Recipients of tokens
-    /// @param tokens ERC20 tokens being claimed
-    /// @param amounts Amounts of tokens that will be sent to the corresponding users
-    /// @param proofs Array of Merkle proofs verifying the claims
+    /**
+     * @notice Claims rewards from Merkl distributor
+     * @param users Recipients of tokens
+     * @param tokens ERC20 tokens being claimed
+     * @param amounts Amounts of tokens that will be sent to the corresponding users
+     * @param proofs Array of Merkle proofs verifying the claims
+     */
     function claim(
         address[] calldata users,
         address[] calldata tokens,
