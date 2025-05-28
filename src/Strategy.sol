@@ -45,8 +45,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     /// @notice Address of the auction contract used for token swaps
     address public auction;
-
-    uint16 public targetIdleAssetBps = 0; // Target idle asset in basis points
+    
+    /// @notice Target idle asset in basis points
+    uint16 public targetIdleAssetBps;
+    
+    /// @notice The strategy deposit limit
     uint256 public depositLimit = type(uint256).max;
 
     /*//////////////////////////////////////////////////////////////
@@ -587,39 +590,61 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             _data,
             (SwapCallbackData)
         );
-        uint256 amountPaid;
-
-        if (_ASSET_IS_TOKEN_0) {
-            if (callbackData.tokenToPay == address(asset)) {
-                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
-                amountPaid = uint256(amount0Delta);
-                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
-            } else if (callbackData.tokenToPay == _PAIRED_TOKEN) {
-                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
-                amountPaid = uint256(amount1Delta);
-                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
-            } else {
-                revert("Strategy: Invalid tokenToPay in callback");
-            }
-        } else {
-            if (callbackData.tokenToPay == address(asset)) {
-                require(amount1Delta > 0, "S: T1 pay, T1 delta !>0");
-                amountPaid = uint256(amount1Delta);
-                require(amount0Delta < 0, "S: T1 pay, T0 delta !<0");
-            } else if (callbackData.tokenToPay == _PAIRED_TOKEN) {
-                require(amount0Delta > 0, "S: T0 pay, T0 delta !>0");
-                amountPaid = uint256(amount0Delta);
-                require(amount1Delta < 0, "S: T0 pay, T1 delta !<0");
-            } else {
-                revert("Strategy: Invalid tokenToPay in callback");
-            }
-        }
+        
+        uint256 amountPaid = _validateAndGetAmountPaid(
+            amount0Delta,
+            amount1Delta,
+            callbackData.tokenToPay
+        );
 
         require(
             amountPaid == callbackData.amountToPay,
             "Strategy: Paid amount mismatch"
         );
         ERC20(callbackData.tokenToPay).safeTransfer(_POOL, amountPaid);
+    }
+    
+    /**
+     * @notice Validates swap callback deltas and returns the amount to be paid
+     * @param amount0Delta Amount delta for token0
+     * @param amount1Delta Amount delta for token1  
+     * @param tokenToPay Address of the token being paid
+     * @return amountPaid The validated amount to pay
+     */
+    function _validateAndGetAmountPaid(
+        int256 amount0Delta,
+        int256 amount1Delta,
+        address tokenToPay
+    ) internal view returns (uint256 amountPaid) {
+        bool isPayingAsset = tokenToPay == address(asset);
+        bool isPayingPairedToken = tokenToPay == _PAIRED_TOKEN;
+        
+        require(
+            isPayingAsset || isPayingPairedToken,
+            "Strategy: Invalid tokenToPay in callback"
+        );
+        
+        if (_ASSET_IS_TOKEN_0) {
+            if (isPayingAsset) {
+                require(amount0Delta > 0, "Strategy: Asset pay, amount0Delta must be positive");
+                require(amount1Delta < 0, "Strategy: Asset pay, amount1Delta must be negative");
+                amountPaid = uint256(amount0Delta);
+            } else {
+                require(amount1Delta > 0, "Strategy: Paired token pay, amount1Delta must be positive");
+                require(amount0Delta < 0, "Strategy: Paired token pay, amount0Delta must be negative");
+                amountPaid = uint256(amount1Delta);
+            }
+        } else {
+            if (isPayingAsset) {
+                require(amount1Delta > 0, "Strategy: Asset pay, amount1Delta must be positive");
+                require(amount0Delta < 0, "Strategy: Asset pay, amount0Delta must be negative");
+                amountPaid = uint256(amount1Delta);
+            } else {
+                require(amount0Delta > 0, "Strategy: Paired token pay, amount0Delta must be positive");
+                require(amount1Delta < 0, "Strategy: Paired token pay, amount1Delta must be negative");
+                amountPaid = uint256(amount0Delta);
+            }
+        }
     }
 
     /*//////////////////////////////////////////////////////////////
