@@ -2,6 +2,7 @@
 pragma solidity ^0.8.18;
 
 import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.sol";
+import {IMerklDistributor} from "./IMerklDistributor.sol";
 
 interface IStrategyInterface is IBaseHealthCheck {
     function lpVaultInAsset()
@@ -10,6 +11,7 @@ interface IStrategyInterface is IBaseHealthCheck {
         returns (uint256 valueLpInAssetTerms);
 
     function STEER_LP() external view returns (address);
+    function MERKL_DISTRIBUTOR() external view returns (IMerklDistributor);
 
     function estimatedTotalAsset() external view returns (uint256);
 
@@ -29,6 +31,7 @@ interface IStrategyInterface is IBaseHealthCheck {
     function setAuction(address _auction) external;
     function setDepositLimit(uint256 _depositLimit) external;
     function setTargetIdleAssetBps(uint16 _targetIdleAssetBps) external;
+    function setUseAuctions(bool _useAuctions) external;
     function manualSwapPairedTokenToAsset(uint256 _amount) external;
     function manualWithdrawFromLp(uint256 _amount) external;
 

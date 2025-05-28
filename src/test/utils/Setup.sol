@@ -35,6 +35,7 @@ contract Setup is Test, IEvents {
         uint256 maxFuzzAmount;
         uint256 assetDecimals;
         uint256 pairedAssetDecimals;
+        bool isStable;
     }
 
     StrategyFactory public strategyFactory;
@@ -77,6 +78,7 @@ contract Setup is Test, IEvents {
 
         // Deploy strategy and set variables
         _setupStrategies(tokenAddrs["steerDAIUSDC"]);
+        _setupStrategies(tokenAddrs["steerUSDCWPOL"]);
 
         // label all the used addresses for traces
         vm.label(keeper, "keeper");
@@ -154,11 +156,13 @@ contract Setup is Test, IEvents {
     }
 
     function _setTokenAddrs() internal {
-        tokenAddrs["WETH"] = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
-        tokenAddrs["USDT"] = 0xdAC17F958D2ee523a2206206994597C13D831ec7;
         tokenAddrs["DAI"] = 0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063;
         tokenAddrs["USDC"] = 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174;
+        tokenAddrs["WPOL"] = 0x0d500B1d8E8eF31E21C99d1Db9A6444d3ADf1270;
         tokenAddrs["steerDAIUSDC"] = 0x77ce0a6ddCBb30d69015105726D106686a054719;
+        tokenAddrs[
+            "steerUSDCWPOL"
+        ] = 0x89E895C79Fc74f53CB13Ee880E38A31149E7802B;
     }
 
     function _setFuzzLimits() internal {
@@ -166,6 +170,8 @@ contract Setup is Test, IEvents {
         minFuzzAmount[tokenAddrs["USDC"]] = 1e6;
         maxFuzzAmount[tokenAddrs["DAI"]] = 10e18;
         minFuzzAmount[tokenAddrs["DAI"]] = 1e18;
+        maxFuzzAmount[tokenAddrs["WPOL"]] = 1e18;
+        minFuzzAmount[tokenAddrs["WPOL"]] = 0.1e18;
     }
 
     function _setupStrategies(address lp) private {
@@ -231,12 +237,18 @@ contract Setup is Test, IEvents {
                 minFuzzAmount[asset],
                 maxFuzzAmount[asset],
                 ERC20(asset).decimals(),
-                ERC20(pairedAsset).decimals()
+                ERC20(pairedAsset).decimals(),
+                asset != tokenAddrs["WPOL"] && pairedAsset != tokenAddrs["WPOL"]
             );
     }
 
     function logStrategyInfo(TestParams memory params) internal view {
         console2.log("==== Strategy Info ====");
+        console2.log(
+            "Asset/PairedAsset: %s/%s",
+            params.asset.symbol(),
+            params.pairedAsset.symbol()
+        );
         console2.log("Total Assets: %e", params.strategy.totalAssets());
         console2.log("ETA: %e", params.strategy.estimatedTotalAsset());
         console2.log(
