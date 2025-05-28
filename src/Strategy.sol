@@ -45,10 +45,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     /// @notice Address of the auction contract used for token swaps
     address public auction;
-    
+
     /// @notice Target idle asset in basis points
     uint16 public targetIdleAssetBps;
-    
+
     /// @notice The strategy deposit limit
     uint256 public depositLimit = type(uint256).max;
 
@@ -590,30 +590,27 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         int256 amount1Delta,
         bytes calldata _data
     ) external override {
-        require(msg.sender == _POOL, "Strategy: Invalid caller");
+        require(msg.sender == _POOL, "!caller"); // dev: Only pool can call swap callback
 
         SwapCallbackData memory callbackData = abi.decode(
             _data,
             (SwapCallbackData)
         );
-        
+
         uint256 amountPaid = _validateAndGetAmountPaid(
             amount0Delta,
             amount1Delta,
             callbackData.tokenToPay
         );
 
-        require(
-            amountPaid == callbackData.amountToPay,
-            "Strategy: Paid amount mismatch"
-        );
+        require(amountPaid == callbackData.amountToPay, "!amount"); // dev: amount mismatch
         ERC20(callbackData.tokenToPay).safeTransfer(_POOL, amountPaid);
     }
-    
+
     /**
      * @notice Validates swap callback deltas and returns the amount to be paid
      * @param amount0Delta Amount delta for token0
-     * @param amount1Delta Amount delta for token1  
+     * @param amount1Delta Amount delta for token1
      * @param tokenToPay Address of the token being paid
      * @return amountPaid The validated amount to pay
      */
@@ -624,30 +621,27 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 amountPaid) {
         bool isPayingAsset = tokenToPay == address(asset);
         bool isPayingPairedToken = tokenToPay == _PAIRED_TOKEN;
-        
-        require(
-            isPayingAsset || isPayingPairedToken,
-            "Strategy: Invalid tokenToPay in callback"
-        );
-        
+
+        require(isPayingAsset || isPayingPairedToken, "!token"); // dev: invalid token to pay
+
         if (_ASSET_IS_TOKEN_0) {
             if (isPayingAsset) {
-                require(amount0Delta > 0, "Strategy: Asset pay, amount0Delta must be positive");
-                require(amount1Delta < 0, "Strategy: Asset pay, amount1Delta must be negative");
+                require(amount0Delta > 0, "!amount0+"); // dev: paying asset as token0
+                require(amount1Delta < 0, "!amount1-"); // dev: paying asset as token0
                 amountPaid = uint256(amount0Delta);
             } else {
-                require(amount1Delta > 0, "Strategy: Paired token pay, amount1Delta must be positive");
-                require(amount0Delta < 0, "Strategy: Paired token pay, amount0Delta must be negative");
+                require(amount1Delta > 0, "!amount1+"); // dev: paying paired token as token1
+                require(amount0Delta < 0, "!amount0-"); // dev: paying paired token as token1
                 amountPaid = uint256(amount1Delta);
             }
         } else {
             if (isPayingAsset) {
-                require(amount1Delta > 0, "Strategy: Asset pay, amount1Delta must be positive");
-                require(amount0Delta < 0, "Strategy: Asset pay, amount0Delta must be negative");
+                require(amount1Delta > 0, "!amount1+"); // dev: paying asset as token1
+                require(amount0Delta < 0, "!amount0-"); // dev: paying asset as token1
                 amountPaid = uint256(amount1Delta);
             } else {
-                require(amount0Delta > 0, "Strategy: Paired token pay, amount0Delta must be positive");
-                require(amount1Delta < 0, "Strategy: Paired token pay, amount1Delta must be negative");
+                require(amount0Delta > 0, "!amount0+"); // dev: paying paired token as token0
+                require(amount1Delta < 0, "!amount1-"); // dev: paying paired token as token0
                 amountPaid = uint256(amount0Delta);
             }
         }
@@ -672,7 +666,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function setTargetIdleAssetBps(
         uint16 _targetIdleAssetBps
     ) external onlyManagement {
-        require(_targetIdleAssetBps <= 10000, "Cannot exceed 100%");
+        require(_targetIdleAssetBps <= 10000, "!bps"); // dev: Target idle asset cannot exceed 100% (10000 bps)
         targetIdleAssetBps = _targetIdleAssetBps;
     }
 
@@ -697,11 +691,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      */
     function setAuction(address _auction) external onlyManagement {
         if (_auction != address(0)) {
-            require(IAuction(_auction).want() == address(asset), "Strategy: Auction want mismatch");
+            require(IAuction(_auction).want() == address(asset), "!want"); // dev: Auction want token must match strategy asset
             require(
                 IAuction(_auction).receiver() == address(this),
-                "Strategy: Auction receiver mismatch"
-            );
+                "!receiver"
+            ); // dev: Auction receiver must be this strategy
         }
         auction = _auction;
     }
@@ -713,14 +707,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function manualSwapPairedTokenToAsset(
         uint256 _amount
     ) external onlyManagement {
-        require(_amount > 0, "Strategy: Amount must be greater than 0");
+        require(_amount > 0, "!amount"); // dev: Amount must be greater than 0
         uint256 pairedTokenBalance = ERC20(_PAIRED_TOKEN).balanceOf(
             address(this)
         );
-        require(
-            _amount <= pairedTokenBalance,
-            "Strategy: Insufficient paired token balance"
-        );
+        require(_amount <= pairedTokenBalance, "!balance"); // dev: Insufficient paired token balance
 
         _swapPairedTokenForAsset(_amount);
     }
@@ -730,9 +721,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param _amount Amount of asset value to withdraw from LP
      */
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
-        require(_amount > 0, "Strategy: Amount must be greater than 0");
+        require(_amount > 0, "!amount"); // dev: Amount must be greater than 0
         uint256 lpValue = lpVaultInAsset();
-        require(_amount <= lpValue, "Strategy: Amount exceeds LP value");
+        require(_amount <= lpValue, "!lpValue"); // dev: Amount exceeds available LP value
         _withdrawFromLp(_amount);
     }
 
