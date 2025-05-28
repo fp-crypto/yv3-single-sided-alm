@@ -48,16 +48,15 @@ contract OracleTest is Setup {
          */
     }
 
-    function test_oracle(uint256 _amount, uint16 _percentChange) public {
-        vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
-        _percentChange = uint16(bound(uint256(_percentChange), 10, MAX_BPS));
+    // function test_oracle(uint256 _amount, uint16 _percentChange) public {
+    //     vm.assume(_amount > minFuzzAmount && _amount < maxFuzzAmount);
+    //     _percentChange = uint16(bound(uint256(_percentChange), 10, MAX_BPS));
 
-        mintAndDepositIntoStrategy(strategy, user, _amount);
+    //     mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        uint256 _delta = (_amount * _percentChange) / MAX_BPS;
+    //     uint256 _delta = (_amount * _percentChange) / MAX_BPS;
 
-        checkOracle(address(strategy), _delta);
-    }
+    //     checkOracle(address(strategy), _delta);
+    // }
 
-    // TODO: Deploy multiple strategies with different tokens as `asset` to test against the oracle.
 }

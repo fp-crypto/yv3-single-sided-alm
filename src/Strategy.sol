@@ -722,8 +722,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      */
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
         require(_amount > 0, "!amount"); // dev: Amount must be greater than 0
-        uint256 lpValue = lpVaultInAsset();
-        require(_amount <= lpValue, "!lpValue"); // dev: Amount exceeds available LP value
         _withdrawFromLp(_amount);
     }
 
