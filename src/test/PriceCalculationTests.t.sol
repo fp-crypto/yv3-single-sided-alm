@@ -15,7 +15,7 @@ contract PriceCalculationTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Should return 0 when everything is empty
         assertEq(strategy.estimatedTotalAsset(), 0);
     }
@@ -26,10 +26,10 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Give strategy some asset tokens
         airdrop(params.asset, address(strategy), _amount);
-        
+
         assertEq(strategy.estimatedTotalAsset(), _amount);
     }
 
@@ -38,17 +38,15 @@ contract PriceCalculationTests is Setup {
         uint256 _amount
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, 1e6, params.maxFuzzAmount / 100);
-        
-        // Adjust for paired token decimals
-        if (params.pairedAssetDecimals < params.assetDecimals) {
-            _amount = _amount / (10 ** (params.assetDecimals - params.pairedAssetDecimals));
-        }
-        if (_amount == 0) return;
-        
+
+        // Set reasonable bounds based on paired asset decimals
+        uint256 minAmount = 10 ** params.pairedAssetDecimals / 100; // 0.01 units
+        uint256 maxAmount = 100 * 10 ** params.pairedAssetDecimals; // 100 units
+        _amount = bound(_amount, minAmount, maxAmount);
+
         // Give strategy some paired tokens
         airdrop(params.pairedAsset, address(strategy), _amount);
-        
+
         uint256 estimatedTotal = strategy.estimatedTotalAsset();
         assertGt(estimatedTotal, 0, "Should have positive estimated total");
     }
@@ -59,16 +57,16 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Deposit and tend to create LP position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        
+
         vm.prank(keeper);
         strategy.tend();
-        
+
         uint256 estimatedTotal = strategy.estimatedTotalAsset();
         uint256 tolerance = (_amount * 15) / 100; // 15% tolerance for slippage
-        
+
         assertApproxEqAbs(
             estimatedTotal,
             _amount,
@@ -82,7 +80,7 @@ contract PriceCalculationTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Should return 0 when no LP shares
         assertEq(strategy.lpVaultInAsset(), 0);
     }
@@ -93,16 +91,16 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Deposit and tend to create LP position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        
+
         vm.prank(keeper);
         strategy.tend();
-        
+
         uint256 lpValue = strategy.lpVaultInAsset();
         assertGt(lpValue, 0, "LP value should be positive");
-        
+
         // LP value should be reasonable compared to deposited amount
         uint256 tolerance = (_amount * 20) / 100; // 20% tolerance
         assertApproxEqAbs(
@@ -119,10 +117,10 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Give strategy some loose assets
         airdrop(params.asset, address(strategy), _amount);
-        
+
         assertEq(
             strategy.availableWithdrawLimit(user),
             _amount,
@@ -136,17 +134,17 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Deposit and tend to create LP position
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        
+
         vm.prank(keeper);
         strategy.tend();
-        
+
         // Available withdraw should be minimal (only loose assets)
         uint256 availableWithdraw = strategy.availableWithdrawLimit(user);
         uint256 tolerance = (_amount * 10) / 100; // 10% tolerance
-        
+
         assertLe(
             availableWithdraw,
             tolerance,
@@ -158,10 +156,14 @@ contract PriceCalculationTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Default deposit limit should be max uint256
         uint256 availableDeposit = strategy.availableDepositLimit(user);
-        assertEq(availableDeposit, type(uint256).max, "Default should be max uint256");
+        assertEq(
+            availableDeposit,
+            type(uint256).max,
+            "Default should be max uint256"
+        );
     }
 
     function test_availableDepositLimit_withCustomLimit(
@@ -170,11 +172,11 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _limit = bound(_limit, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Set custom deposit limit
         vm.prank(management);
         strategy.setDepositLimit(_limit);
-        
+
         uint256 availableDeposit = strategy.availableDepositLimit(user);
         assertEq(availableDeposit, _limit, "Should equal custom limit");
     }
@@ -185,14 +187,14 @@ contract PriceCalculationTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-        
+
         // Give strategy some assets but don't create LP position
         airdrop(params.asset, address(strategy), _amount);
-        
+
         // When LP is empty, should aim for 50/50 split in deposit
         vm.prank(keeper);
         strategy.tend();
-        
+
         // Check that some swap occurred and LP position was created
         assertGt(
             ERC20(params.lp).balanceOf(address(strategy)),
@@ -206,25 +208,39 @@ contract PriceCalculationTests is Setup {
         uint256 _amount
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount / 2, params.maxFuzzAmount / 2);
-        
-        // Adjust for paired token decimals
-        uint256 pairedAmount = _amount;
+        _amount = bound(
+            _amount,
+            params.minFuzzAmount,
+            params.maxFuzzAmount / 10
+        );
+
+        // Calculate appropriate paired token amount based on decimals
+        uint256 pairedAmount;
         if (params.pairedAssetDecimals < params.assetDecimals) {
-            pairedAmount = _amount / (10 ** (params.assetDecimals - params.pairedAssetDecimals));
+            pairedAmount =
+                _amount /
+                (10 ** (params.assetDecimals - params.pairedAssetDecimals));
+            if (pairedAmount == 0) pairedAmount = 1;
+        } else if (params.pairedAssetDecimals > params.assetDecimals) {
+            pairedAmount =
+                _amount *
+                (10 ** (params.pairedAssetDecimals - params.assetDecimals));
+        } else {
+            pairedAmount = _amount;
         }
-        if (pairedAmount == 0) return;
-        
+
         // Give strategy excess paired tokens
         airdrop(params.asset, address(strategy), _amount);
         airdrop(params.pairedAsset, address(strategy), pairedAmount * 3); // 3x normal amount
-        
-        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(address(strategy));
-        
+
+        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+
         // Tend should rebalance by swapping excess paired tokens
         vm.prank(keeper);
         strategy.tend();
-        
+
         // Should have less paired tokens after rebalancing
         assertLt(
             params.pairedAsset.balanceOf(address(strategy)),
@@ -238,41 +254,43 @@ contract PriceCalculationTests is Setup {
         uint256 _amount
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount / 10);
-        
+        _amount = bound(
+            _amount,
+            params.minFuzzAmount,
+            params.maxFuzzAmount / 10
+        );
+
         // This test verifies the strategy doesn't break with current pool prices
         // In production, extreme prices could cause issues, but we test current state
-        
+
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        
+
         vm.prank(keeper);
         strategy.tend();
-        
+
         // Should successfully create position regardless of current price
         assertGt(
             ERC20(params.lp).balanceOf(address(strategy)),
             0,
             "Should create LP position with current price"
         );
-        
+
         // Price calculations should not overflow or underflow
         uint256 lpValue = strategy.lpVaultInAsset();
         assertGt(lpValue, 0, "LP value calculation should work");
-        
+
         uint256 totalAssets = strategy.estimatedTotalAsset();
         assertGt(totalAssets, 0, "Total assets calculation should work");
     }
 
-    function test_zeroAmountHandling(
-        IStrategyInterface strategy
-    ) public {
+    function test_zeroAmountHandling(IStrategyInterface strategy) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // All calculations should handle zero amounts gracefully
         assertEq(strategy.estimatedTotalAsset(), 0);
         assertEq(strategy.lpVaultInAsset(), 0);
         assertEq(strategy.availableWithdrawLimit(user), 0);
-        
+
         // Should not revert on zero amounts
         vm.prank(keeper);
         strategy.tend(); // Should not do anything but shouldn't revert

@@ -11,28 +11,28 @@ contract MockAuction {
     address public receiver;
     bool public isActiveValue;
     uint256 public availableValue;
-    
+
     constructor(address _want, address _receiver) {
         want = _want;
         receiver = _receiver;
     }
-    
+
     function setActive(bool _active) external {
         isActiveValue = _active;
     }
-    
+
     function setAvailable(uint256 _available) external {
         availableValue = _available;
     }
-    
+
     function isActive(address) external view returns (bool) {
         return isActiveValue;
     }
-    
+
     function available(address) external view returns (uint256) {
         return availableValue;
     }
-    
+
     function kick(address) external returns (uint256) {
         return 1000;
     }
@@ -48,7 +48,7 @@ contract ManagementTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        
+
         vm.prank(management);
         vm.expectRevert(bytes("!bps"));
         strategy.setTargetIdleAssetBps(10001); // > 10000
@@ -58,10 +58,10 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(management);
         strategy.setTargetIdleAssetBps(10000); // Exactly 10000 should work
-        
+
         assertEq(strategy.targetIdleAssetBps(), 10000);
     }
 
@@ -69,10 +69,10 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(management);
         strategy.setTargetIdleAssetBps(0);
-        
+
         assertEq(strategy.targetIdleAssetBps(), 0);
     }
 
@@ -80,7 +80,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.setTargetIdleAssetBps(5000);
@@ -92,10 +92,10 @@ contract ManagementTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _limit = bound(_limit, 0, type(uint256).max);
-        
+
         vm.prank(management);
         strategy.setDepositLimit(_limit);
-        
+
         assertEq(strategy.depositLimit(), _limit);
     }
 
@@ -103,7 +103,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.setDepositLimit(1000e18);
@@ -113,13 +113,13 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Create mock auction with wrong want token
         MockAuction mockAuction = new MockAuction(
             address(params.pairedAsset), // Wrong token
             address(strategy)
         );
-        
+
         vm.prank(management);
         vm.expectRevert("!want");
         strategy.setAuction(address(mockAuction));
@@ -129,43 +129,39 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Create mock auction with wrong receiver
         MockAuction mockAuction = new MockAuction(
             address(params.asset),
             address(0x1234567890123456789012345678901234567890) // Wrong receiver
         );
-        
+
         vm.prank(management);
         vm.expectRevert("!receiver");
         strategy.setAuction(address(mockAuction));
     }
 
-    function test_setAuction_validAuction(
-        IStrategyInterface strategy
-    ) public {
+    function test_setAuction_validAuction(IStrategyInterface strategy) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // Create valid mock auction
         MockAuction mockAuction = new MockAuction(
             address(params.asset),
             address(strategy)
         );
-        
+
         vm.prank(management);
         strategy.setAuction(address(mockAuction));
-        
+
         assertEq(strategy.auction(), address(mockAuction));
     }
 
-    function test_setAuction_setToZero(
-        IStrategyInterface strategy
-    ) public {
+    function test_setAuction_setToZero(IStrategyInterface strategy) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(management);
         strategy.setAuction(address(0));
-        
+
         assertEq(strategy.auction(), address(0));
     }
 
@@ -173,22 +169,20 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.setAuction(address(0));
     }
 
-    function test_setUseAuctions_toggle(
-        IStrategyInterface strategy
-    ) public {
+    function test_setUseAuctions_toggle(IStrategyInterface strategy) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         bool initialValue = strategy.useAuctions();
-        
+
         vm.prank(management);
         strategy.setUseAuctions(!initialValue);
-        
+
         assertEq(strategy.useAuctions(), !initialValue);
     }
 
@@ -196,7 +190,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.setUseAuctions(true);
@@ -206,7 +200,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(management);
         vm.expectRevert("!amount");
         strategy.manualSwapPairedTokenToAsset(0);
@@ -217,13 +211,15 @@ contract ManagementTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         uint256 amount = 1000;
-        
+
         // Ensure strategy has less than amount
-        uint256 currentBalance = params.pairedAsset.balanceOf(address(strategy));
+        uint256 currentBalance = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
         if (currentBalance >= amount) {
             return; // Skip if strategy already has enough balance
         }
-        
+
         vm.prank(management);
         vm.expectRevert("!balance");
         strategy.manualSwapPairedTokenToAsset(amount);
@@ -234,22 +230,20 @@ contract ManagementTests is Setup {
         uint256 _amount
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, 1, params.maxFuzzAmount / 100);
-        
-        // Adjust for decimals
-        if (params.pairedAssetDecimals < params.assetDecimals) {
-            _amount = _amount / (10 ** (params.assetDecimals - params.pairedAssetDecimals));
-        }
-        if (_amount == 0) _amount = 1;
-        
+
+        // Set reasonable bounds based on paired asset decimals
+        uint256 minAmount = 10 ** params.pairedAssetDecimals / 100; // 0.01 units
+        uint256 maxAmount = 10 * 10 ** params.pairedAssetDecimals; // 10 units
+        _amount = bound(_amount, minAmount, maxAmount);
+
         // Give strategy some paired tokens
         airdrop(params.pairedAsset, address(strategy), _amount);
-        
+
         uint256 balanceBefore = params.pairedAsset.balanceOf(address(strategy));
-        
+
         vm.prank(management);
         strategy.manualSwapPairedTokenToAsset(_amount);
-        
+
         // Should have less paired tokens after swap
         assertLt(
             params.pairedAsset.balanceOf(address(strategy)),
@@ -262,7 +256,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.manualSwapPairedTokenToAsset(1000);
@@ -272,7 +266,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(management);
         vm.expectRevert("!amount");
         strategy.manualWithdrawFromLp(0);
@@ -282,7 +276,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         vm.prank(user);
         vm.expectRevert();
         strategy.manualWithdrawFromLp(1000e18);
@@ -294,14 +288,14 @@ contract ManagementTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         _depositLimit = bound(_depositLimit, 1, params.maxFuzzAmount);
-        
+
         // Set a low deposit limit
         vm.prank(management);
         strategy.setDepositLimit(_depositLimit);
-        
+
         // Deposit up to the limit
         mintAndDepositIntoStrategy(strategy, user, _depositLimit);
-        
+
         // Available deposit limit should be 0
         assertEq(strategy.availableDepositLimit(user), 0);
     }
@@ -312,18 +306,29 @@ contract ManagementTests is Setup {
         uint256 _currentDeposit
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        _depositLimit = bound(_depositLimit, params.minFuzzAmount * 2, params.maxFuzzAmount);
-        _currentDeposit = bound(_currentDeposit, params.minFuzzAmount, _depositLimit / 2);
-        
+        _depositLimit = bound(
+            _depositLimit,
+            params.minFuzzAmount * 2,
+            params.maxFuzzAmount
+        );
+        _currentDeposit = bound(
+            _currentDeposit,
+            params.minFuzzAmount,
+            _depositLimit / 2
+        );
+
         // Set deposit limit
         vm.prank(management);
         strategy.setDepositLimit(_depositLimit);
-        
+
         // Deposit less than limit
         mintAndDepositIntoStrategy(strategy, user, _currentDeposit);
-        
+
         // Available deposit limit should be positive
         assertGt(strategy.availableDepositLimit(user), 0);
-        assertLe(strategy.availableDepositLimit(user), _depositLimit - _currentDeposit);
+        assertLe(
+            strategy.availableDepositLimit(user),
+            _depositLimit - _currentDeposit
+        );
     }
 }

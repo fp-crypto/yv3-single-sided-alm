@@ -9,7 +9,6 @@ import {StrategyFactory} from "../../StrategyFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-//import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 // Inherit the events so they can be checked if desired.
 import {IEvents} from "@tokenized-strategy/interfaces/IEvents.sol";
@@ -24,7 +23,6 @@ interface IFactory {
 
 contract Setup is Test, IEvents {
     using EnumerableSet for EnumerableSet.AddressSet;
-    //using EnumerableMap for EnumerableMap.AddressToAddressMap;
 
     struct TestParams {
         IStrategyInterface strategy;

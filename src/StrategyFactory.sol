@@ -1,11 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0
 pragma solidity ^0.8.18;
 
-import {Strategy, ERC20} from "./Strategy.sol";
+import {Strategy} from "./Strategy.sol";
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+
 contract StrategyFactory {
-    event NewStrategy(address indexed strategy, address indexed asset);
+    using EnumerableSet for EnumerableSet.AddressSet;
+    using EnumerableMap for EnumerableMap.Bytes32ToAddressMap;
+
+    event NewStrategy(
+        address indexed strategy,
+        address indexed asset,
+        address indexed lp
+    );
 
     address public immutable emergencyAdmin;
 
@@ -13,8 +23,9 @@ contract StrategyFactory {
     address public performanceFeeRecipient;
     address public keeper;
 
-    /// @notice Track the deployments. asset => pool => strategy
-    mapping(address => address) public deployments;
+    /// @notice Track the deployments keccak(asset+lp) => strategy
+    EnumerableMap.Bytes32ToAddressMap private _deploymentMapping;
+    EnumerableSet.AddressSet private _deployments;
 
     constructor(
         address _management,
@@ -40,22 +51,23 @@ contract StrategyFactory {
         string calldata _name,
         address _steerLP
     ) external virtual returns (address) {
+        bytes32 strategyKey = getStrategyKey(_asset, _steerLP);
+        require(!_deploymentMapping.contains(strategyKey), "!new");
+
         // tokenized strategies available setters.
         IStrategyInterface _newStrategy = IStrategyInterface(
             address(new Strategy(_asset, _name, _steerLP))
         );
 
         _newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
-
         _newStrategy.setKeeper(keeper);
-
         _newStrategy.setPendingManagement(management);
-
         _newStrategy.setEmergencyAdmin(emergencyAdmin);
 
-        emit NewStrategy(address(_newStrategy), _asset);
+        emit NewStrategy(address(_newStrategy), _asset, _steerLP);
 
-        deployments[_asset] = address(_newStrategy);
+        _deployments.add(address(_newStrategy));
+        _deploymentMapping.set(strategyKey, address(_newStrategy));
         return address(_newStrategy);
     }
 
@@ -76,6 +88,10 @@ contract StrategyFactory {
         keeper = _keeper;
     }
 
+    function deployments() external view returns (address[] memory) {
+        return _deployments.values();
+    }
+
     /**
      * @notice Checks if a strategy was deployed by this factory
      * @param _strategy The strategy address to check
@@ -84,7 +100,21 @@ contract StrategyFactory {
     function isDeployedStrategy(
         address _strategy
     ) external view returns (bool) {
-        address _asset = IStrategyInterface(_strategy).asset();
-        return deployments[_asset] == _strategy;
+        return _deployments.contains(_strategy);
+    }
+
+    function getStrategyForAssetLpPair(
+        address _asset,
+        address _lp
+    ) external view returns (address _strategy) {
+        bytes32 strategyKey = getStrategyKey(_asset, _lp);
+        (, _strategy) = _deploymentMapping.tryGet(strategyKey);
+    }
+
+    function getStrategyKey(
+        address _asset,
+        address _lp
+    ) private pure returns (bytes32) {
+        return keccak256(abi.encodePacked(_asset, _lp));
     }
 }
