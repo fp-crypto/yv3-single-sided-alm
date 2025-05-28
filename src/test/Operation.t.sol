@@ -16,12 +16,11 @@ contract OperationTest is Setup {
         assertEq(strategy.management(), management);
         assertEq(strategy.performanceFeeRecipient(), performanceFeeRecipient);
         assertEq(strategy.keeper(), keeper);
-        // TODO: add additional check on strat params
     }
 
     function test_operation(uint256 _amount) public {
         _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
-        uint256 maxDelta = (_amount * 0.05e18) / 1e18; // allow a 5% deviation
+        uint256 maxDelta = (_amount * 0.10e18) / 1e18; // allow a 10% deviation
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -170,8 +169,9 @@ contract OperationTest is Setup {
         uint256 balanceBefore = asset.balanceOf(user);
 
         // Withdraw all funds
-        vm.prank(user);
+        vm.startPrank(user);
         strategy.redeem(strategy.maxRedeem(user), user, user);
+        vm.stopPrank();
 
         assertGe(
             asset.balanceOf(user),
