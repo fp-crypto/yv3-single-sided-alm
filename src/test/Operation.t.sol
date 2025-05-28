@@ -100,6 +100,124 @@ contract OperationTest is Setup {
         );
     }
 
+    function test_twoDeposits(
+        IStrategyInterface strategy,
+        uint256 _amount,
+        uint16 _initialDepositBps
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+        _initialDepositBps = uint16(
+            bound(uint256(_initialDepositBps), 1000, 9000)
+        );
+        uint256 maxDelta = (_amount * 0.10e18) / 1e18; // allow a 10% deviation
+        ERC20 asset = params.asset;
+        ERC20 pairedAsset = params.pairedAsset;
+        address lp = params.lp;
+
+        // Deposit into strategy
+        airdrop(asset, user, _amount);
+
+        uint256 _initialDepositAmount = (_amount * _initialDepositBps) /
+            MAX_BPS;
+        depositIntoStrategy(strategy, user, _initialDepositAmount);
+
+        assertEq(strategy.totalAssets(), _initialDepositAmount, "!totalAssets");
+
+        vm.prank(keeper);
+        strategy.tend();
+        logStrategyInfo(params);
+        assertApproxEqAbs(
+            strategy.estimatedTotalAsset(),
+            _initialDepositAmount,
+            maxDelta,
+            "!eta"
+        );
+        assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
+        assertApproxEqAbs(
+            asset.balanceOf(address(strategy)),
+            0,
+            maxDelta,
+            "too much idle asset"
+        );
+
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
+        assertApproxEqAbs(
+            pairedAsset.balanceOf(address(strategy)),
+            0,
+            decimalDiff >= 0
+                ? maxDelta / 10 ** uint256(decimalDiff)
+                : maxDelta * 10 ** uint256(-decimalDiff),
+            "too much idle pairedAsset"
+        );
+
+        skip(1 days);
+
+        uint256 _subsequentDepositAmount = asset.balanceOf(user);
+        depositIntoStrategy(strategy, user, _subsequentDepositAmount);
+
+        assertEq(strategy.totalAssets(), _amount, "!totalAssets");
+
+        vm.prank(keeper);
+        strategy.tend();
+        logStrategyInfo(params);
+        assertApproxEqAbs(
+            strategy.estimatedTotalAsset(),
+            _amount,
+            maxDelta,
+            "!eta"
+        );
+        assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
+        assertApproxEqAbs(
+            asset.balanceOf(address(strategy)),
+            0,
+            maxDelta,
+            "too much idle asset"
+        );
+        assertApproxEqAbs(
+            pairedAsset.balanceOf(address(strategy)),
+            0,
+            decimalDiff >= 0
+                ? maxDelta / 10 ** uint256(decimalDiff)
+                : maxDelta * 10 ** uint256(-decimalDiff),
+            "too much idle pairedAsset"
+        );
+
+        skip(1 days);
+
+        vm.prank(management);
+        strategy.setDoHealthCheck(false);
+
+        // Report profit
+        vm.prank(keeper);
+        (uint256 profit, uint256 loss) = strategy.report();
+
+        // Check return Values
+        assertApproxEqAbs(profit, 0, maxDelta, "!profit");
+        assertApproxEqAbs(loss, 0, maxDelta, "!loss");
+
+        skip(strategy.profitMaxUnlockTime());
+
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(type(uint256).max);
+        logStrategyInfo(params);
+
+        uint256 balanceBefore = asset.balanceOf(user);
+
+        // Withdraw all funds
+        vm.startPrank(user);
+        strategy.redeem(strategy.maxRedeem(user), user, user);
+        vm.stopPrank();
+
+        assertApproxEqAbs(
+            asset.balanceOf(user),
+            balanceBefore + _amount,
+            maxDelta,
+            "!final balance"
+        );
+    }
+
     function test_idle(
         IStrategyInterface strategy,
         uint256 _amount,
@@ -133,10 +251,15 @@ contract OperationTest is Setup {
         if (_idleBps != 10_000)
             assertGt(ERC20(lp).balanceOf(address(strategy)), 0, "no lp");
         else assertEq(ERC20(lp).balanceOf(address(strategy)), 0, "lp");
+        assertGe(
+            asset.balanceOf(address(strategy)),
+            (_amount * _idleBps) / MAX_BPS,
+            "too little idle"
+        );
         assertApproxEqAbs(
             asset.balanceOf(address(strategy)),
-            (_amount * _idleBps) / 10000,
-            0.01e18,
+            (_amount * _idleBps) / MAX_BPS,
+            maxDelta,
             "too much idle asset"
         );
 
@@ -177,7 +300,6 @@ contract OperationTest is Setup {
         // Earn Interest
         skip(1 days);
 
-        // TODO: implement logic to simulate earning interest.
         uint256 toAirdrop = (_amount * _profitFactor) / MAX_BPS;
         airdrop(asset, address(strategy), toAirdrop);
 

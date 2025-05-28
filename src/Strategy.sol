@@ -289,8 +289,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /**
      * @notice Calculates the amount of the strategy's asset to swap to achieve a balanced
      *         deposit into the Uniswap V3 LP, based on the current LP composition.
-     * @dev If the LP is empty, it aims for a 50/50 value split by swapping half the asset.
-     *      Otherwise, it calculates the swap amount to match the LP's current token value ratio.
+     * @dev If the LP is empty, returns 0.Otherwise, it calculates the swap amount
+     *      to match the LP's current token value ratio.
      * @param assetBalance The current balance of the strategy's asset available for deposit.
      * @param total0InLp The total amount of token0 in the Uniswap V3 LP.
      * @param total1InLp The total amount of token1 in the Uniswap V3 LP.
@@ -303,39 +303,34 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 total1InLp,
         uint160 sqrtPriceX96
     ) internal view returns (uint256 amountToSwap) {
-        if (total0InLp == 0 && total1InLp == 0) {
-            amountToSwap = assetBalance / 2; // LP is empty, aim for 50/50 split
+        if (total0InLp == 0 && total1InLp == 0) return 0;
+
+        uint256 pairedTokenValueInAsset;
+        uint256 totalLpValueInAsset;
+
+        if (_ASSET_IS_TOKEN_0) {
+            pairedTokenValueInAsset = FullMath.mulDiv(
+                total1InLp,
+                Q96,
+                FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
+            );
+            totalLpValueInAsset = total0InLp + pairedTokenValueInAsset;
         } else {
-            uint256 pairedTokenValueInAsset;
-            uint256 totalLpValueInAsset;
-
-            if (_ASSET_IS_TOKEN_0) {
-                pairedTokenValueInAsset = FullMath.mulDiv(
-                    total1InLp,
-                    Q96,
-                    FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
-                );
-                totalLpValueInAsset = total0InLp + pairedTokenValueInAsset;
-            } else {
-                pairedTokenValueInAsset = FullMath.mulDiv(
-                    FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
-                    sqrtPriceX96,
-                    Q96
-                );
-                totalLpValueInAsset = total1InLp + pairedTokenValueInAsset;
-            }
-
-            if (totalLpValueInAsset == 0) {
-                amountToSwap = assetBalance / 2; // Fallback: aim for 50/50
-            } else {
-                // Calculate swap amount to match LP's token value ratio
-                amountToSwap = FullMath.mulDiv(
-                    assetBalance,
-                    pairedTokenValueInAsset,
-                    totalLpValueInAsset
-                );
-            }
+            pairedTokenValueInAsset = FullMath.mulDiv(
+                FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
+                sqrtPriceX96,
+                Q96
+            );
+            totalLpValueInAsset = total1InLp + pairedTokenValueInAsset;
         }
+
+        if (totalLpValueInAsset == 0) return 0;
+        // Calculate swap amount to match LP's token value ratio
+        amountToSwap = FullMath.mulDiv(
+            assetBalance,
+            pairedTokenValueInAsset,
+            totalLpValueInAsset
+        );
     }
 
     /**
@@ -520,12 +515,15 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         (uint256 lpToken0Balance, uint256 lpToken1Balance) = STEER_LP
             .getTotalAmounts();
 
+        if (lpToken0Balance == 0 && lpToken1Balance == 0) return; // do not be first lp
+
         uint256 targetPairedTokenValueInAsset = _calculateAmountToSwapForDeposit(
                 totalDepositValueInAsset,
                 lpToken0Balance,
                 lpToken1Balance,
                 sqrtPriceX96
             );
+        if (targetPairedTokenValueInAsset == 0) return;
 
         _performRebalancingSwap(
             pairedTokenValueInAsset,
