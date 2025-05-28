@@ -9,7 +9,10 @@ contract OperationTest is Setup {
         super.setUp();
     }
 
-    function test_setupStrategyOK() public {
+    function test_setupStrategyOK(IStrategyInterface strategy) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        ERC20 asset = params.asset;
+
         console2.log("address of strategy", address(strategy));
         assertTrue(address(0) != address(strategy));
         assertEq(strategy.asset(), address(asset));
@@ -18,9 +21,16 @@ contract OperationTest is Setup {
         assertEq(strategy.keeper(), keeper);
     }
 
-    function test_operation(uint256 _amount) public {
-        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+    function test_operation(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
         uint256 maxDelta = (_amount * 0.10e18) / 1e18; // allow a 10% deviation
+        ERC20 asset = params.asset;
+        ERC20 pairedAsset = params.pairedAsset;
+        address lp = params.lp;
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -29,7 +39,7 @@ contract OperationTest is Setup {
 
         vm.prank(keeper);
         strategy.tend();
-        logStrategyInfo();
+        logStrategyInfo(params);
         assertApproxEqAbs(
             strategy.estimatedTotalAsset(),
             _amount,
@@ -43,11 +53,16 @@ contract OperationTest is Setup {
             maxDelta,
             "too much idle asset"
         );
+
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
         assertApproxEqAbs(
-            otherAsset.balanceOf(address(strategy)),
+            pairedAsset.balanceOf(address(strategy)),
             0,
-            maxDelta / 10 ** 12, // TODO: correct decimals conversion
-            "too much idle otherAsset"
+            decimalDiff >= 0
+                ? maxDelta / 10 ** uint256(decimalDiff)
+                : maxDelta * 10 ** uint256(-decimalDiff), // TODO: correct decimals conversion
+            "too much idle pairedAsset"
         );
 
         // Earn Interest
@@ -68,7 +83,7 @@ contract OperationTest is Setup {
 
         vm.prank(management);
         strategy.manualWithdrawFromLp(type(uint256).max);
-        logStrategyInfo();
+        logStrategyInfo(params);
 
         uint256 balanceBefore = asset.balanceOf(user);
 
@@ -85,10 +100,17 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_idle(uint256 _amount, uint16 _idleBps) public {
-        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
-        _idleBps = uint16(bound(uint256(_idleBps), 0, 10_000));
+    function test_idle(
+        IStrategyInterface strategy,
+        uint256 _amount,
+        uint16 _idleBps
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+        _idleBps = uint16(bound(uint256(_idleBps), 0, MAX_BPS));
         uint256 maxDelta = (_amount * 0.05e18) / 1e18; // allow a 5% deviation
+        ERC20 asset = params.asset;
+        address lp = params.lp;
 
         vm.prank(management);
         strategy.setTargetIdleAssetBps(_idleBps);
@@ -101,7 +123,7 @@ contract OperationTest is Setup {
         vm.prank(keeper);
         strategy.tend();
 
-        logStrategyInfo();
+        logStrategyInfo(params);
         assertApproxEqAbs(
             strategy.estimatedTotalAsset(),
             _amount,
@@ -120,7 +142,7 @@ contract OperationTest is Setup {
 
         vm.prank(management);
         strategy.manualWithdrawFromLp(type(uint256).max);
-        logStrategyInfo();
+        logStrategyInfo(params);
 
         uint256 balanceBefore = asset.balanceOf(user);
 
@@ -138,11 +160,14 @@ contract OperationTest is Setup {
     }
 
     function test_profitableReport(
+        IStrategyInterface strategy,
         uint256 _amount,
         uint16 _profitFactor
     ) public {
-        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
         _profitFactor = uint16(bound(uint256(_profitFactor), 10, MAX_BPS));
+        ERC20 asset = params.asset;
 
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -180,8 +205,12 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_tendTrigger(uint256 _amount) public {
-        _amount = bound(_amount, minFuzzAmount, maxFuzzAmount);
+    function test_tendTrigger(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
 
         (bool trigger, ) = strategy.tendTrigger();
         assertTrue(!trigger);

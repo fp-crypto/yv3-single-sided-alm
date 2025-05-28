@@ -8,6 +8,9 @@ import {Strategy, ERC20, ISushiMultiPositionLiquidityManager} from "../../Strate
 import {StrategyFactory} from "../../StrategyFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
 
+import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
+//import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
+
 // Inherit the events so they can be checked if desired.
 import {IEvents} from "@tokenized-strategy/interfaces/IEvents.sol";
 
@@ -20,15 +23,27 @@ interface IFactory {
 }
 
 contract Setup is Test, IEvents {
-    // Contract instances that we will use repeatedly.
-    ERC20 public asset;
-    IStrategyInterface public strategy;
-    address public lp;
-    ERC20 public otherAsset;
+    using EnumerableSet for EnumerableSet.AddressSet;
+    //using EnumerableMap for EnumerableMap.AddressToAddressMap;
+
+    struct TestParams {
+        IStrategyInterface strategy;
+        address lp;
+        ERC20 asset;
+        ERC20 pairedAsset;
+        uint256 minFuzzAmount;
+        uint256 maxFuzzAmount;
+        uint256 assetDecimals;
+        uint256 pairedAssetDecimals;
+    }
 
     StrategyFactory public strategyFactory;
 
     mapping(string => address) public tokenAddrs;
+
+    EnumerableSet.AddressSet internal lps;
+    EnumerableSet.AddressSet internal assets;
+    EnumerableSet.AddressSet internal strategies;
 
     // Addresses for different roles we will use repeatedly.
     address public user = address(10);
@@ -41,29 +56,17 @@ contract Setup is Test, IEvents {
     address public factory;
 
     // Integer variables that will be used repeatedly.
-    uint256 public decimals;
     uint256 public MAX_BPS = 10_000;
 
-    uint256 public maxFuzzAmount = 10e18;
-    uint256 public minFuzzAmount = 1e18;
+    mapping(address => uint256) public minFuzzAmount;
+    mapping(address => uint256) public maxFuzzAmount;
 
     // Default profit max unlock time is set for 10 days
     uint256 public profitMaxUnlockTime = 10 days;
 
     function setUp() public virtual {
         _setTokenAddrs();
-
-        // Set asset
-        asset = ERC20(tokenAddrs["DAI"]);
-        lp = tokenAddrs["steerDAIUSDC"];
-        otherAsset = ERC20(
-            ISushiMultiPositionLiquidityManager(lp).token1() == address(asset)
-                ? ISushiMultiPositionLiquidityManager(lp).token0()
-                : ISushiMultiPositionLiquidityManager(lp).token1()
-        );
-
-        // Set decimals
-        decimals = asset.decimals();
+        _setFuzzLimits();
 
         strategyFactory = new StrategyFactory(
             management,
@@ -73,42 +76,24 @@ contract Setup is Test, IEvents {
         );
 
         // Deploy strategy and set variables
-        strategy = IStrategyInterface(setUpStrategy());
-
-        factory = strategy.FACTORY();
+        _setupStrategies(tokenAddrs["steerDAIUSDC"]);
 
         // label all the used addresses for traces
         vm.label(keeper, "keeper");
         vm.label(factory, "factory");
-        vm.label(address(asset), "asset");
         vm.label(management, "management");
-        vm.label(address(strategy), "strategy");
         vm.label(performanceFeeRecipient, "performanceFeeRecipient");
     }
 
-    function setUpStrategy() public returns (address) {
-        // we save the strategy as a IStrategyInterface to give it the needed interface
-        IStrategyInterface _strategy = IStrategyInterface(
-            address(
-                strategyFactory.newStrategy(
-                    address(asset),
-                    "Tokenized Strategy",
-                    lp
-                )
-            )
-        );
-
-        vm.prank(management);
-        _strategy.acceptManagement();
-
-        return address(_strategy);
-    }
+    function setUpStrategy() public returns (address) {}
 
     function depositIntoStrategy(
         IStrategyInterface _strategy,
         address _user,
         uint256 _amount
     ) public {
+        ERC20 asset = ERC20(_strategy.asset());
+
         vm.prank(_user);
         asset.approve(address(_strategy), _amount);
 
@@ -121,6 +106,7 @@ contract Setup is Test, IEvents {
         address _user,
         uint256 _amount
     ) public {
+        ERC20 asset = ERC20(_strategy.asset());
         airdrop(asset, _user, _amount);
         depositIntoStrategy(_strategy, _user, _amount);
     }
@@ -149,7 +135,11 @@ contract Setup is Test, IEvents {
         deal(address(_asset), _to, balanceBefore + _amount);
     }
 
-    function setFees(uint16 _protocolFee, uint16 _performanceFee) public {
+    function setFees(
+        IStrategyInterface strategy,
+        uint16 _protocolFee,
+        uint16 _performanceFee
+    ) public {
         address gov = IFactory(factory).governance();
 
         // Need to make sure there is a protocol fee recipient to set the fee.
@@ -171,17 +161,97 @@ contract Setup is Test, IEvents {
         tokenAddrs["steerDAIUSDC"] = 0x77ce0a6ddCBb30d69015105726D106686a054719;
     }
 
-    function logStrategyInfo() internal view {
-        console2.log("==== Strategy Info ====");
-        console2.log("Total Assets: %e", strategy.totalAssets());
-        console2.log("ETA: %e", strategy.estimatedTotalAsset());
-        console2.log("Idle asset: %e", asset.balanceOf(address(strategy)));
-        console2.log(
-            "Idle otherAsset: %e",
-            otherAsset.balanceOf(address(strategy))
+    function _setFuzzLimits() internal {
+        maxFuzzAmount[tokenAddrs["USDC"]] = 10e6;
+        minFuzzAmount[tokenAddrs["USDC"]] = 1e6;
+        maxFuzzAmount[tokenAddrs["DAI"]] = 10e18;
+        minFuzzAmount[tokenAddrs["DAI"]] = 1e18;
+    }
+
+    function _setupStrategies(address lp) private {
+        IStrategyInterface _strategy0 = IStrategyInterface(
+            address(
+                strategyFactory.newStrategy(
+                    ISushiMultiPositionLiquidityManager(lp).token0(),
+                    "Tokenized Strategy",
+                    lp
+                )
+            )
         );
-        console2.log("LP balance: %e", ERC20(lp).balanceOf(address(strategy)));
-        console2.log("LP in asset: %e", strategy.lpVaultInAsset());
+
+        IStrategyInterface _strategy1 = IStrategyInterface(
+            address(
+                strategyFactory.newStrategy(
+                    ISushiMultiPositionLiquidityManager(lp).token1(),
+                    "Tokenized Strategy",
+                    lp
+                )
+            )
+        );
+
+        lps.add(lp);
+        assets.add(_strategy0.asset());
+        assets.add(_strategy1.asset());
+        strategies.add(address(_strategy0));
+        strategies.add(address(_strategy1));
+
+        vm.startPrank(management);
+        _strategy0.acceptManagement();
+        _strategy1.acceptManagement();
+        vm.stopPrank();
+    }
+
+    function fixtureStrategy() public returns (address[] memory) {
+        return strategies.values();
+    }
+
+    function _isFixtureStrategy(
+        address _strategy
+    ) internal view returns (bool) {
+        return strategies.contains(_strategy);
+    }
+
+    function _getTestParams(
+        address _strategy
+    ) internal returns (TestParams memory) {
+        vm.assume(_isFixtureStrategy(_strategy));
+
+        IStrategyInterface strategy = IStrategyInterface(_strategy);
+        ISushiMultiPositionLiquidityManager lp = ISushiMultiPositionLiquidityManager(
+                strategy.STEER_LP()
+            );
+        address asset = address(strategy.asset());
+        address pairedAsset = lp.token0() == asset ? lp.token1() : lp.token0();
+        return
+            TestParams(
+                strategy,
+                address(lp),
+                ERC20(asset),
+                ERC20(pairedAsset),
+                minFuzzAmount[asset],
+                maxFuzzAmount[asset],
+                ERC20(asset).decimals(),
+                ERC20(pairedAsset).decimals()
+            );
+    }
+
+    function logStrategyInfo(TestParams memory params) internal view {
+        console2.log("==== Strategy Info ====");
+        console2.log("Total Assets: %e", params.strategy.totalAssets());
+        console2.log("ETA: %e", params.strategy.estimatedTotalAsset());
+        console2.log(
+            "Idle asset: %e",
+            params.asset.balanceOf(address(params.strategy))
+        );
+        console2.log(
+            "Idle pairedAsset: %e",
+            params.pairedAsset.balanceOf(address(params.strategy))
+        );
+        console2.log(
+            "LP balance: %e",
+            ERC20(params.lp).balanceOf(address(params.strategy))
+        );
+        console2.log("LP in asset: %e", params.strategy.lpVaultInAsset());
         console2.log("======================");
     }
 }

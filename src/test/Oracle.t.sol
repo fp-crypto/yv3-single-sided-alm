@@ -58,5 +58,4 @@ contract OracleTest is Setup {
 
     //     checkOracle(address(strategy), _delta);
     // }
-
 }
