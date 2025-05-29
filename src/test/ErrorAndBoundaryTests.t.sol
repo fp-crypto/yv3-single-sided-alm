@@ -428,4 +428,137 @@ contract ErrorAndBoundaryTests is Setup {
         // Should handle insufficient balance gracefully without reverting
         assertTrue(true, "Handled insufficient paired token balance");
     }
+
+    function test_depositInLp_emptySteerLP(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // We need to simulate the condition where lpToken0Balance == 0 && lpToken1Balance == 0
+        // This is tested by having assets ready for deposit but the Steer LP being empty
+        // In practice, this could happen if strategy is the first depositor or LP was fully drained
+
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        // Check initial state - strategy has assets but hasn't tended yet
+        uint256 assetBalance = params.asset.balanceOf(address(strategy));
+        assertEq(assetBalance, _amount, "Strategy should have deposited assets");
+        assertEq(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have no LP shares initially");
+
+        // Get the Steer LP and check its total amounts - this simulates the empty LP condition
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        (uint256 total0InLp, uint256 total1InLp) = steerLP.getTotalAmounts();
+
+        // If LP is not empty, we skip this specific test condition
+        // as we're testing the boundary case where LP is completely empty
+        if (total0InLp != 0 || total1InLp != 0) {
+            // LP is not empty, this test validates that the logic works with existing LP
+            vm.prank(keeper);
+            strategy.tend();
+            assertGt(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have LP shares");
+            return;
+        }
+
+        // If we reach here, LP is empty - this triggers the line 519 condition:
+        // if (lpToken0Balance == 0 && lpToken1Balance == 0) return;
+        vm.prank(keeper);
+        strategy.tend();
+
+        // When LP is empty, _depositInLp should return early and not deposit
+        // Strategy should still have the asset balance and no LP shares
+        assertEq(
+            params.asset.balanceOf(address(strategy)),
+            _amount,
+            "Assets should remain undeployed when LP is empty"
+        );
+        assertEq(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Strategy should have no LP shares when LP is empty"
+        );
+    }
+
+    function test_availableDepositLimit_scenarios(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        uint256 baseAmount = params.minFuzzAmount * 10; // Use a reasonable base amount
+
+        // Test 1: depositLimit set very low (1 wei) with totalAssets = 0
+        vm.prank(management);
+        strategy.setDepositLimit(1);
+
+        uint256 availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 1, "Should allow deposit up to 1 wei when totalAssets is 0");
+
+        // Test 2: depositLimit slightly above totalAssets
+        uint256 smallDeposit = baseAmount / 4;
+        vm.prank(management);
+        strategy.setDepositLimit(smallDeposit + 100);
+
+        mintAndDepositIntoStrategy(strategy, user, smallDeposit);
+        
+        availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 100, "Should allow deposit up to remaining capacity");
+
+        // Reset for next test
+        vm.startPrank(user);
+        strategy.redeem(strategy.maxRedeem(user), user, user);
+        vm.stopPrank();
+
+        // Test 3: depositLimit exactly equals totalAssets
+        vm.prank(management);
+        strategy.setDepositLimit(baseAmount);
+
+        mintAndDepositIntoStrategy(strategy, user, baseAmount);
+        
+        availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 0, "Should allow no deposits when at exact limit");
+
+        // Test 4: depositLimit below totalAssets (should return 0)
+        // First add more assets to make totalAssets > depositLimit
+        airdrop(params.asset, address(strategy), 100);
+        
+        availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 0, "Should allow no deposits when totalAssets exceeds depositLimit");
+
+        // Test 5: Reset to unlimited and verify normal behavior
+        vm.prank(management);
+        strategy.setDepositLimit(type(uint256).max);
+        
+        availableLimit = strategy.availableDepositLimit(user);
+        assertGt(availableLimit, 0, "Should allow deposits when limit is unlimited");
+    }
+
+    function test_availableDepositLimit_edgeCases(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test with depositLimit = 0 (no deposits allowed)
+        vm.prank(management);
+        strategy.setDepositLimit(0);
+
+        uint256 availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 0, "Should allow no deposits when limit is 0");
+
+        // Test with very large depositLimit
+        vm.prank(management);
+        strategy.setDepositLimit(type(uint256).max);
+
+        availableLimit = strategy.availableDepositLimit(user);
+        assertGt(availableLimit, 0, "Should allow deposits with max limit");
+
+        // Test boundary where depositLimit - totalAssets = 1
+        uint256 smallAmount = params.minFuzzAmount;
+        vm.prank(management);
+        strategy.setDepositLimit(smallAmount + 1);
+
+        mintAndDepositIntoStrategy(strategy, user, smallAmount);
+        
+        availableLimit = strategy.availableDepositLimit(user);
+        assertEq(availableLimit, 1, "Should allow exactly 1 wei deposit at boundary");
+    }
 }
