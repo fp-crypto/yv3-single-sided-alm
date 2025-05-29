@@ -523,8 +523,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 lpToken1Balance,
                 sqrtPriceX96
             );
-        if (targetPairedTokenValueInAsset == 0) return;
-
         _performRebalancingSwap(
             pairedTokenValueInAsset,
             targetPairedTokenValueInAsset,

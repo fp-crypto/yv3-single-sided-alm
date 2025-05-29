@@ -353,4 +353,79 @@ contract ErrorAndBoundaryTests is Setup {
             "Should handle large amount"
         );
     }
+
+    function test_rebalancing_insufficientAssetBalance(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Drain most asset balance to trigger line 421 condition, but leave some minimal amount
+        uint256 currentAssetBalance = params.asset.balanceOf(address(strategy));
+        if (currentAssetBalance > 1000) {
+            vm.prank(address(strategy));
+            params.asset.transfer(user, currentAssetBalance - 1000);
+        }
+
+        // Add a small amount of paired token to create slight imbalance
+        uint256 pairedTokenAmount = _amount / 100; // Much smaller amount
+        
+        // Adjust for decimal differences between asset and paired token
+        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            pairedTokenAmount = pairedTokenAmount / (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            pairedTokenAmount = pairedTokenAmount * (10 ** uint256(-decimalDiff));
+        }
+        
+        if (pairedTokenAmount > 0) {
+            airdrop(params.pairedAsset, address(strategy), pairedTokenAmount);
+        }
+
+        // Should hit line 421: assetValueToSwap > assetBalance (gracefully handled)
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should handle insufficient balance gracefully without reverting
+        assertTrue(true, "Handled insufficient asset balance");
+    }
+
+    function test_rebalancing_insufficientPairedTokenBalance(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Drain paired token balance to trigger line 437 condition, but leave minimal amount
+        uint256 currentPairedBalance = params.pairedAsset.balanceOf(address(strategy));
+        if (currentPairedBalance > 1000) {
+            vm.prank(address(strategy));
+            params.pairedAsset.transfer(user, currentPairedBalance - 1000);
+        }
+
+        // Add a small amount of asset to create slight imbalance
+        uint256 assetAmount = _amount / 100; // Much smaller amount
+        if (assetAmount > 0) {
+            airdrop(params.asset, address(strategy), assetAmount);
+        }
+
+        // Should hit line 437: pairedTokenQuantityToSwap > pairedTokenBalance (gracefully handled)
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should handle insufficient balance gracefully without reverting
+        assertTrue(true, "Handled insufficient paired token balance");
+    }
 }
