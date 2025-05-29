@@ -339,29 +339,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param amountToSwap The amount of asset to swap
      */
     function _swapAssetForPairedToken(uint256 amountToSwap) internal {
-        SwapCallbackData memory callbackData = SwapCallbackData(
-            address(asset),
-            amountToSwap
-        );
-        bytes memory data = abi.encode(callbackData);
-
-        if (_ASSET_IS_TOKEN_0) {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                true,
-                int256(amountToSwap),
-                TickMath.MIN_SQRT_RATIO + 1,
-                data
-            );
-        } else {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                false,
-                int256(amountToSwap),
-                TickMath.MAX_SQRT_RATIO - 1,
-                data
-            );
-        }
+        _performSwap(address(asset), amountToSwap, _ASSET_IS_TOKEN_0);
     }
 
     /**
@@ -369,29 +347,33 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param amountToSwap The amount of paired token to swap
      */
     function _swapPairedTokenForAsset(uint256 amountToSwap) internal {
+        _performSwap(address(_PAIRED_TOKEN), amountToSwap, !_ASSET_IS_TOKEN_0);
+    }
+
+    /**
+     * @notice Internal helper to perform token swaps via Uniswap V3 pool.
+     * @param tokenIn The address of the token being swapped
+     * @param amountToSwap The amount of token to swap
+     * @param zeroForOne The direction of the swap (true = token0 -> token1, false = token1 -> token0)
+     */
+    function _performSwap(
+        address tokenIn,
+        uint256 amountToSwap,
+        bool zeroForOne
+    ) internal {
         SwapCallbackData memory callbackData = SwapCallbackData(
-            address(_PAIRED_TOKEN),
+            tokenIn,
             amountToSwap
         );
         bytes memory data = abi.encode(callbackData);
 
-        if (_ASSET_IS_TOKEN_0) {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                false,
-                int256(amountToSwap),
-                TickMath.MAX_SQRT_RATIO - 1,
-                data
-            );
-        } else {
-            IUniswapV3Pool(_POOL).swap(
-                address(this),
-                true,
-                int256(amountToSwap),
-                TickMath.MIN_SQRT_RATIO + 1,
-                data
-            );
-        }
+        IUniswapV3Pool(_POOL).swap(
+            address(this),
+            zeroForOne,
+            int256(amountToSwap),
+            zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1,
+            data
+        );
     }
 
     /**
