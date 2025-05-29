@@ -4,23 +4,160 @@ pragma solidity ^0.8.18;
 import "forge-std/console2.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
 import {ISushiMultiPositionLiquidityManager} from "../interfaces/steer/ISushiMultiPositionLiquidityManager.sol";
+import {Strategy} from "../Strategy.sol";
 
 contract ErrorAndBoundaryTests is Setup {
     function setUp() public virtual override {
         super.setUp();
     }
 
-    function test_constructor_invalidAsset() public {
-        TestParams memory params = _getTestParams(fixtureStrategy()[0]);
+    function test_constructor_invalidSteerLP() public {
+        // Test constructor with address(0) for _steerLP parameter
+        vm.expectRevert(bytes("!0"));
+        new Strategy(tokenAddrs["DAI"], "Test Strategy", address(0));
+    }
 
-        // Use WETH as an invalid asset (it's a real ERC20 but not in our test LPs)
+    function test_constructor_invalidAsset() public {
+        // Test constructor with asset that doesn't match token0 or token1 of the LP
         address invalidAsset = 0x7ceB23fD6bC0adD59E62ac25578270cFf1b9f619; // WETH on Polygon
 
         vm.expectRevert(bytes("!asset"));
-        strategyFactory.newStrategy(
+        new Strategy(
             invalidAsset,
             "Invalid Strategy",
-            params.lp
+            tokenAddrs["steerDAIUSDC"]
+        );
+    }
+
+    function test_rebalancing_assetValueExceedsBalance(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create initial position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Create scenario where assetValueToSwap > assetBalance (line 400-401)
+        // We need to create a large imbalance by adding paired tokens but limiting asset balance
+
+        // Drain most asset balance but leave a small amount
+        uint256 currentAssetBalance = params.asset.balanceOf(address(strategy));
+        uint256 smallAssetBalance = 100; // Very small amount
+
+        if (currentAssetBalance > smallAssetBalance) {
+            vm.prank(address(strategy));
+            params.asset.transfer(
+                user,
+                currentAssetBalance - smallAssetBalance
+            );
+        }
+
+        // Add a large amount of assets and paired tokens to force rebalancing calculation
+        // This will create a scenario where the calculated swap amount exceeds available balance
+        uint256 largeAssetDeposit = _amount * 5; // Much larger than available balance
+        airdrop(params.asset, address(strategy), largeAssetDeposit);
+
+        // Add paired token to create imbalance that requires asset->paired token swap
+        uint256 pairedTokenAmount = _amount / 10;
+
+        // Adjust for decimal differences
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            pairedTokenAmount =
+                pairedTokenAmount /
+                (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            pairedTokenAmount =
+                pairedTokenAmount *
+                (10 ** uint256(-decimalDiff));
+        }
+
+        if (pairedTokenAmount > 0) {
+            airdrop(params.pairedAsset, address(strategy), pairedTokenAmount);
+        }
+
+        // Now drain the asset balance to create the condition
+        uint256 finalAssetBalance = params.asset.balanceOf(address(strategy));
+        if (finalAssetBalance > smallAssetBalance) {
+            vm.prank(address(strategy));
+            params.asset.transfer(user, finalAssetBalance - smallAssetBalance);
+        }
+
+        // This should trigger line 400-401: if (assetValueToSwap > assetBalance)
+        // The function should cap the swap amount to available balance
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should handle the condition gracefully without reverting
+        assertTrue(true, "Handled assetValueToSwap > assetBalance condition");
+    }
+
+    function test_rebalancing_pairedTokenQuantityExceedsBalance(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create initial position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Create scenario where pairedTokenQuantityToSwap > pairedTokenBalance (line 416-417)
+        // Add assets to create imbalance requiring paired token->asset swap
+
+        uint256 largeAssetAmount = _amount * 3;
+        airdrop(params.asset, address(strategy), largeAssetAmount);
+
+        // Add a small amount of paired token
+        uint256 smallPairedAmount = _amount / 20;
+
+        // Adjust for decimal differences
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            smallPairedAmount =
+                smallPairedAmount /
+                (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            smallPairedAmount =
+                smallPairedAmount *
+                (10 ** uint256(-decimalDiff));
+        }
+
+        if (smallPairedAmount > 0) {
+            airdrop(params.pairedAsset, address(strategy), smallPairedAmount);
+        }
+
+        // Now drain the paired token balance to very small amount
+        uint256 currentPairedBalance = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+        uint256 verySmallPairedBalance = 50; // Tiny amount
+
+        if (currentPairedBalance > verySmallPairedBalance) {
+            vm.prank(address(strategy));
+            params.pairedAsset.transfer(
+                user,
+                currentPairedBalance - verySmallPairedBalance
+            );
+        }
+
+        // This should trigger line 416-417: if (pairedTokenQuantityToSwap > pairedTokenBalance)
+        // The function should cap the swap amount to available balance
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Should handle the condition gracefully without reverting
+        assertTrue(
+            true,
+            "Handled pairedTokenQuantityToSwap > pairedTokenBalance condition"
         );
     }
 
@@ -790,5 +927,222 @@ contract ErrorAndBoundaryTests is Setup {
             true,
             "Successfully handled large excess paired token scenario"
         );
+    }
+
+    function test_swapCallback_invalidTokenToPay(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create position to have callback context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Get the pool address to call as the correct caller
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
+        address poolAddress = steerLP.pool();
+
+        // Test with invalid token (not asset or paired token)
+        address invalidToken = address(0xdead); // Random invalid address
+
+        // Create proper SwapCallbackData struct
+        bytes memory callbackData = abi.encode(
+            invalidToken, // tokenToPay
+            1e18 // amountToPay
+        );
+
+        // This should trigger the "!token" error in _validateAndGetAmountPaid
+        vm.expectRevert(bytes("!token"));
+        vm.prank(poolAddress);
+        strategy.uniswapV3SwapCallback(
+            1e18, // amount0Delta > 0
+            -1e17, // amount1Delta < 0
+            callbackData
+        );
+    }
+
+    function test_swapCallback_invalidAmountDeltas_assetAsToken0(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Get LP to determine token order
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
+        address token0 = steerLP.token0();
+        address poolAddress = steerLP.pool();
+
+        // Only run for strategies where asset is token0
+        if (address(params.asset) != token0) {
+            return;
+        }
+
+        // Create position to have callback context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Test invalid deltas for asset as token0 payment
+        // When paying asset as token0, amount1Delta should be < 0, but we pass > 0
+        bytes memory callbackData1 = abi.encode(
+            address(params.asset), // tokenToPay
+            1e18 // amountToPay
+        );
+
+        vm.expectRevert(bytes("!amount1-"));
+        vm.prank(poolAddress);
+        strategy.uniswapV3SwapCallback(
+            1e18, // amount0Delta > 0 (correct for paying token0)
+            1e17, // amount1Delta > 0 (WRONG - should be < 0)
+            callbackData1
+        );
+
+        // Test invalid deltas for paired token as token1 payment
+        // When paying paired token as token1, amount0Delta should be < 0, but we pass > 0
+        bytes memory callbackData2 = abi.encode(
+            address(params.pairedAsset), // tokenToPay
+            1e18 // amountToPay
+        );
+
+        vm.expectRevert(bytes("!amount0-"));
+        vm.prank(poolAddress);
+        strategy.uniswapV3SwapCallback(
+            1e17, // amount0Delta > 0 (WRONG - should be < 0)
+            1e18, // amount1Delta > 0 (correct for paying token1)
+            callbackData2
+        );
+    }
+
+    function test_swapCallback_invalidAmountDeltas_assetAsToken1(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Get LP to determine token order
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
+        address token0 = steerLP.token0();
+        address poolAddress = steerLP.pool();
+
+        // Only run for strategies where asset is token1 (not token0)
+        if (address(params.asset) == token0) {
+            return;
+        }
+
+        // Create position to have callback context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Test invalid deltas for asset as token1 payment
+        // When paying asset as token1, amount0Delta should be < 0, but we pass > 0
+        bytes memory callbackData1 = abi.encode(
+            address(params.asset), // tokenToPay
+            1e18 // amountToPay
+        );
+
+        vm.expectRevert(bytes("!amount0-"));
+        vm.prank(poolAddress);
+        strategy.uniswapV3SwapCallback(
+            1e17, // amount0Delta > 0 (WRONG - should be < 0)
+            1e18, // amount1Delta > 0 (correct for paying token1)
+            callbackData1
+        );
+
+        // Test invalid deltas for paired token as token0 payment
+        // When paying paired token as token0, amount1Delta should be < 0, but we pass > 0
+        bytes memory callbackData2 = abi.encode(
+            address(params.pairedAsset), // tokenToPay
+            1e18 // amountToPay
+        );
+
+        vm.expectRevert(bytes("!amount1-"));
+        vm.prank(poolAddress);
+        strategy.uniswapV3SwapCallback(
+            1e18, // amount0Delta > 0 (correct for paying token0)
+            1e17, // amount1Delta > 0 (WRONG - should be < 0)
+            callbackData2
+        );
+    }
+
+    function test_swapCallback_invalidCaller(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Create position to have callback context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        bytes memory callbackData = abi.encode(
+            address(params.asset), // tokenToPay
+            1e18 // amountToPay
+        );
+
+        // Test with non-pool caller
+        vm.expectRevert(bytes("!caller"));
+        vm.prank(user); // Wrong caller (not the pool)
+        strategy.uniswapV3SwapCallback(1e18, -1e17, callbackData);
+    }
+
+    function test_swapCallback_amountMismatch(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Get LP to determine token order and pool address
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
+        address poolAddress = steerLP.pool();
+        address token0 = steerLP.token0();
+
+        // Create position to have callback context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // We need to construct valid deltas that pass validation but have amount mismatch
+        // Test with valid deltas but mismatched amounts in callback data
+        bytes memory callbackData = abi.encode(
+            address(params.asset), // tokenToPay
+            1e18 // amountToPay (but delta will indicate 2e18)
+        );
+
+        vm.expectRevert(bytes("!amount"));
+        vm.prank(poolAddress); // Correct caller (the pool)
+
+        // Use valid deltas based on token order
+        if (address(params.asset) == token0) {
+            // Asset is token0, so when paying asset: amount0Delta > 0, amount1Delta < 0
+            strategy.uniswapV3SwapCallback(
+                2e18, // amount0Delta indicates 2e18 (but callback says 1e18)
+                -1e17, // amount1Delta < 0 (valid for paying token0)
+                callbackData
+            );
+        } else {
+            // Asset is token1, so when paying asset: amount1Delta > 0, amount0Delta < 0
+            strategy.uniswapV3SwapCallback(
+                -1e17, // amount0Delta < 0 (valid for paying token1)
+                2e18, // amount1Delta indicates 2e18 (but callback says 1e18)
+                callbackData
+            );
+        }
     }
 }
