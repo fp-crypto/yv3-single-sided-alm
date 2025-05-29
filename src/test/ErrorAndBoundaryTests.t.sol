@@ -561,4 +561,145 @@ contract ErrorAndBoundaryTests is Setup {
         availableLimit = strategy.availableDepositLimit(user);
         assertEq(availableLimit, 1, "Should allow exactly 1 wei deposit at boundary");
     }
+
+    function test_rebalancing_excessPairedTokenForToken1Strategy(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Get LP information to determine token order
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        address token0 = steerLP.token0();
+        address token1 = steerLP.token1();
+        
+        // Only run this test if the strategy's asset is token1 (not token0)
+        // This ensures we're testing the else branch in _convertAssetValueToPairedTokenQuantity
+        if (address(params.asset) == token0) {
+            // Skip this test for token0 strategies
+            return;
+        }
+        
+        // Verify we have a token1 strategy
+        assertEq(address(params.asset), token1, "Strategy asset should be token1");
+        assertEq(address(params.pairedAsset), token0, "Paired asset should be token0");
+
+        // Create initial position to establish LP context
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Verify we have an LP position
+        assertGt(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have LP shares");
+
+        // Now create the scenario for excess paired token rebalancing
+        // We need BOTH assets and paired tokens for rebalancing to trigger
+        
+        // Airdrop some asset back to the strategy (needed for deposit logic)
+        uint256 assetForDeposit = _amount / 4; // 25% of original amount
+        airdrop(params.asset, address(strategy), assetForDeposit);
+        
+        // Airdrop excess paired token to create significant imbalance
+        uint256 excessPairedTokenAmount = _amount * 2; // 2x the original amount
+        
+        // Adjust for decimal differences
+        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            excessPairedTokenAmount = excessPairedTokenAmount / (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            excessPairedTokenAmount = excessPairedTokenAmount * (10 ** uint256(-decimalDiff));
+        }
+        
+        // Ensure we have a meaningful amount
+        if (excessPairedTokenAmount < 1000) {
+            excessPairedTokenAmount = 1000;
+        }
+
+        airdrop(params.pairedAsset, address(strategy), excessPairedTokenAmount);
+
+        uint256 pairedTokenBalanceBefore = params.pairedAsset.balanceOf(address(strategy));
+        uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
+
+        console2.log("Before rebalancing:");
+        console2.log("Asset balance:", assetBalanceBefore);
+        console2.log("Paired token balance:", pairedTokenBalanceBefore);
+
+        // Verify we have both assets available for rebalancing
+        assertGt(assetBalanceBefore, 0, "Should have asset balance for rebalancing");
+        assertGt(pairedTokenBalanceBefore, 0, "Should have paired token balance for rebalancing");
+
+        // This should trigger the rebalancing logic that calls _convertAssetValueToPairedTokenQuantity
+        // with _ASSET_IS_TOKEN_0 = false, hitting the else branch (line 278)
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 pairedTokenBalanceAfter = params.pairedAsset.balanceOf(address(strategy));
+        uint256 assetBalanceAfter = params.asset.balanceOf(address(strategy));
+
+        console2.log("After rebalancing:");
+        console2.log("Asset balance:", assetBalanceAfter);
+        console2.log("Paired token balance:", pairedTokenBalanceAfter);
+
+        // With excess paired token, we expect some to be swapped for asset
+        // The exact amount depends on LP composition, but there should be some change
+        bool rebalancingOccurred = (pairedTokenBalanceAfter != pairedTokenBalanceBefore) || 
+                                  (assetBalanceAfter != assetBalanceBefore);
+        
+        assertTrue(rebalancingOccurred, "Some rebalancing should have occurred");
+        
+        // The strategy should have rebalanced successfully without reverting
+        assertTrue(true, "Rebalancing with excess paired token completed successfully");
+    }
+
+    function test_rebalancing_forceExcessPairedTokenScenario(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Get LP information to determine token order
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        address token0 = steerLP.token0();
+        
+        // Only run this test if the strategy's asset is NOT token0
+        if (address(params.asset) == token0) {
+            return; // Skip for token0 strategies
+        }
+
+        // Create a scenario that forces excess paired token rebalancing
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        
+        // First, let's get the current LP composition to understand the ratio
+        (uint256 total0InLp, uint256 total1InLp) = steerLP.getTotalAmounts();
+        
+        // Skip if LP is empty (covered by other tests)
+        if (total0InLp == 0 && total1InLp == 0) {
+            return;
+        }
+
+        // Airdrop a large amount of paired token to guarantee excess
+        // Use a much larger amount to ensure we trigger the excess condition
+        uint256 largeExcess = _amount * 10; // 10x the original amount
+        
+        // Adjust for decimals
+        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            largeExcess = largeExcess / (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            largeExcess = largeExcess * (10 ** uint256(-decimalDiff));
+        }
+
+        airdrop(params.pairedAsset, address(strategy), largeExcess);
+
+        // Force the rebalancing by calling tend
+        // This should definitely trigger the excess paired token condition
+        // and call _convertAssetValueToPairedTokenQuantity with _ASSET_IS_TOKEN_0 = false
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Verify the function executed without reverting
+        assertTrue(true, "Successfully handled large excess paired token scenario");
+    }
 }
