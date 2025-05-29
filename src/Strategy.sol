@@ -66,6 +66,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         string memory _name,
         address _steerLP
     ) BaseHealthCheck(_asset, _name) {
+        require(_steerLP != address(0), "!0");
         STEER_LP = ISushiMultiPositionLiquidityManager(_steerLP);
         _POOL = ISushiMultiPositionLiquidityManager(_steerLP).pool();
         address _token0 = ISushiMultiPositionLiquidityManager(_steerLP)

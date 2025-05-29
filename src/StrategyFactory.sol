@@ -58,16 +58,15 @@ contract StrategyFactory {
         IStrategyInterface _newStrategy = IStrategyInterface(
             address(new Strategy(_asset, _name, _steerLP))
         );
+        emit NewStrategy(address(_newStrategy), _asset, _steerLP);
+        _deployments.add(address(_newStrategy));
+        _deploymentMapping.set(strategyKey, address(_newStrategy));
 
         _newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _newStrategy.setKeeper(keeper);
         _newStrategy.setPendingManagement(management);
         _newStrategy.setEmergencyAdmin(emergencyAdmin);
 
-        emit NewStrategy(address(_newStrategy), _asset, _steerLP);
-
-        _deployments.add(address(_newStrategy));
-        _deploymentMapping.set(strategyKey, address(_newStrategy));
         return address(_newStrategy);
     }
 
