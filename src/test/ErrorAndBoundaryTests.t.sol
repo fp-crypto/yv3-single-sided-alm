@@ -375,15 +375,20 @@ contract ErrorAndBoundaryTests is Setup {
 
         // Add a small amount of paired token to create slight imbalance
         uint256 pairedTokenAmount = _amount / 100; // Much smaller amount
-        
+
         // Adjust for decimal differences between asset and paired token
-        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
         if (decimalDiff > 0) {
-            pairedTokenAmount = pairedTokenAmount / (10 ** uint256(decimalDiff));
+            pairedTokenAmount =
+                pairedTokenAmount /
+                (10 ** uint256(decimalDiff));
         } else if (decimalDiff < 0) {
-            pairedTokenAmount = pairedTokenAmount * (10 ** uint256(-decimalDiff));
+            pairedTokenAmount =
+                pairedTokenAmount *
+                (10 ** uint256(-decimalDiff));
         }
-        
+
         if (pairedTokenAmount > 0) {
             airdrop(params.pairedAsset, address(strategy), pairedTokenAmount);
         }
@@ -409,7 +414,9 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.tend();
 
         // Drain paired token balance to trigger line 437 condition, but leave minimal amount
-        uint256 currentPairedBalance = params.pairedAsset.balanceOf(address(strategy));
+        uint256 currentPairedBalance = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
         if (currentPairedBalance > 1000) {
             vm.prank(address(strategy));
             params.pairedAsset.transfer(user, currentPairedBalance - 1000);
@@ -444,11 +451,21 @@ contract ErrorAndBoundaryTests is Setup {
 
         // Check initial state - strategy has assets but hasn't tended yet
         uint256 assetBalance = params.asset.balanceOf(address(strategy));
-        assertEq(assetBalance, _amount, "Strategy should have deposited assets");
-        assertEq(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have no LP shares initially");
+        assertEq(
+            assetBalance,
+            _amount,
+            "Strategy should have deposited assets"
+        );
+        assertEq(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Strategy should have no LP shares initially"
+        );
 
         // Get the Steer LP and check its total amounts - this simulates the empty LP condition
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
         (uint256 total0InLp, uint256 total1InLp) = steerLP.getTotalAmounts();
 
         // If LP is not empty, we skip this specific test condition
@@ -457,7 +474,11 @@ contract ErrorAndBoundaryTests is Setup {
             // LP is not empty, this test validates that the logic works with existing LP
             vm.prank(keeper);
             strategy.tend();
-            assertGt(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have LP shares");
+            assertGt(
+                ERC20(params.lp).balanceOf(address(strategy)),
+                0,
+                "Strategy should have LP shares"
+            );
             return;
         }
 
@@ -491,7 +512,11 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.setDepositLimit(1);
 
         uint256 availableLimit = strategy.availableDepositLimit(user);
-        assertEq(availableLimit, 1, "Should allow deposit up to 1 wei when totalAssets is 0");
+        assertEq(
+            availableLimit,
+            1,
+            "Should allow deposit up to 1 wei when totalAssets is 0"
+        );
 
         // Test 2: depositLimit slightly above totalAssets
         uint256 smallDeposit = baseAmount / 4;
@@ -499,9 +524,13 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.setDepositLimit(smallDeposit + 100);
 
         mintAndDepositIntoStrategy(strategy, user, smallDeposit);
-        
+
         availableLimit = strategy.availableDepositLimit(user);
-        assertEq(availableLimit, 100, "Should allow deposit up to remaining capacity");
+        assertEq(
+            availableLimit,
+            100,
+            "Should allow deposit up to remaining capacity"
+        );
 
         // Reset for next test
         vm.startPrank(user);
@@ -513,23 +542,35 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.setDepositLimit(baseAmount);
 
         mintAndDepositIntoStrategy(strategy, user, baseAmount);
-        
+
         availableLimit = strategy.availableDepositLimit(user);
-        assertEq(availableLimit, 0, "Should allow no deposits when at exact limit");
+        assertEq(
+            availableLimit,
+            0,
+            "Should allow no deposits when at exact limit"
+        );
 
         // Test 4: depositLimit below totalAssets (should return 0)
         // First add more assets to make totalAssets > depositLimit
         airdrop(params.asset, address(strategy), 100);
-        
+
         availableLimit = strategy.availableDepositLimit(user);
-        assertEq(availableLimit, 0, "Should allow no deposits when totalAssets exceeds depositLimit");
+        assertEq(
+            availableLimit,
+            0,
+            "Should allow no deposits when totalAssets exceeds depositLimit"
+        );
 
         // Test 5: Reset to unlimited and verify normal behavior
         vm.prank(management);
         strategy.setDepositLimit(type(uint256).max);
-        
+
         availableLimit = strategy.availableDepositLimit(user);
-        assertGt(availableLimit, 0, "Should allow deposits when limit is unlimited");
+        assertGt(
+            availableLimit,
+            0,
+            "Should allow deposits when limit is unlimited"
+        );
     }
 
     function test_availableDepositLimit_edgeCases(
@@ -557,9 +598,13 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.setDepositLimit(smallAmount + 1);
 
         mintAndDepositIntoStrategy(strategy, user, smallAmount);
-        
+
         availableLimit = strategy.availableDepositLimit(user);
-        assertEq(availableLimit, 1, "Should allow exactly 1 wei deposit at boundary");
+        assertEq(
+            availableLimit,
+            1,
+            "Should allow exactly 1 wei deposit at boundary"
+        );
     }
 
     function test_rebalancing_excessPairedTokenForToken1Strategy(
@@ -570,20 +615,30 @@ contract ErrorAndBoundaryTests is Setup {
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
 
         // Get LP information to determine token order
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
         address token0 = steerLP.token0();
         address token1 = steerLP.token1();
-        
+
         // Only run this test if the strategy's asset is token1 (not token0)
         // This ensures we're testing the else branch in _convertAssetValueToPairedTokenQuantity
         if (address(params.asset) == token0) {
             // Skip this test for token0 strategies
             return;
         }
-        
+
         // Verify we have a token1 strategy
-        assertEq(address(params.asset), token1, "Strategy asset should be token1");
-        assertEq(address(params.pairedAsset), token0, "Paired asset should be token0");
+        assertEq(
+            address(params.asset),
+            token1,
+            "Strategy asset should be token1"
+        );
+        assertEq(
+            address(params.pairedAsset),
+            token0,
+            "Paired asset should be token0"
+        );
 
         // Create initial position to establish LP context
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -591,26 +646,35 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.tend();
 
         // Verify we have an LP position
-        assertGt(ERC20(params.lp).balanceOf(address(strategy)), 0, "Strategy should have LP shares");
+        assertGt(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Strategy should have LP shares"
+        );
 
         // Now create the scenario for excess paired token rebalancing
         // We need BOTH assets and paired tokens for rebalancing to trigger
-        
+
         // Airdrop some asset back to the strategy (needed for deposit logic)
         uint256 assetForDeposit = _amount / 4; // 25% of original amount
         airdrop(params.asset, address(strategy), assetForDeposit);
-        
+
         // Airdrop excess paired token to create significant imbalance
         uint256 excessPairedTokenAmount = _amount * 2; // 2x the original amount
-        
+
         // Adjust for decimal differences
-        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
         if (decimalDiff > 0) {
-            excessPairedTokenAmount = excessPairedTokenAmount / (10 ** uint256(decimalDiff));
+            excessPairedTokenAmount =
+                excessPairedTokenAmount /
+                (10 ** uint256(decimalDiff));
         } else if (decimalDiff < 0) {
-            excessPairedTokenAmount = excessPairedTokenAmount * (10 ** uint256(-decimalDiff));
+            excessPairedTokenAmount =
+                excessPairedTokenAmount *
+                (10 ** uint256(-decimalDiff));
         }
-        
+
         // Ensure we have a meaningful amount
         if (excessPairedTokenAmount < 1000) {
             excessPairedTokenAmount = 1000;
@@ -618,7 +682,9 @@ contract ErrorAndBoundaryTests is Setup {
 
         airdrop(params.pairedAsset, address(strategy), excessPairedTokenAmount);
 
-        uint256 pairedTokenBalanceBefore = params.pairedAsset.balanceOf(address(strategy));
+        uint256 pairedTokenBalanceBefore = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
         uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
 
         console2.log("Before rebalancing:");
@@ -626,15 +692,25 @@ contract ErrorAndBoundaryTests is Setup {
         console2.log("Paired token balance:", pairedTokenBalanceBefore);
 
         // Verify we have both assets available for rebalancing
-        assertGt(assetBalanceBefore, 0, "Should have asset balance for rebalancing");
-        assertGt(pairedTokenBalanceBefore, 0, "Should have paired token balance for rebalancing");
+        assertGt(
+            assetBalanceBefore,
+            0,
+            "Should have asset balance for rebalancing"
+        );
+        assertGt(
+            pairedTokenBalanceBefore,
+            0,
+            "Should have paired token balance for rebalancing"
+        );
 
         // This should trigger the rebalancing logic that calls _convertAssetValueToPairedTokenQuantity
         // with _ASSET_IS_TOKEN_0 = false, hitting the else branch (line 278)
         vm.prank(keeper);
         strategy.tend();
 
-        uint256 pairedTokenBalanceAfter = params.pairedAsset.balanceOf(address(strategy));
+        uint256 pairedTokenBalanceAfter = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
         uint256 assetBalanceAfter = params.asset.balanceOf(address(strategy));
 
         console2.log("After rebalancing:");
@@ -643,13 +719,20 @@ contract ErrorAndBoundaryTests is Setup {
 
         // With excess paired token, we expect some to be swapped for asset
         // The exact amount depends on LP composition, but there should be some change
-        bool rebalancingOccurred = (pairedTokenBalanceAfter != pairedTokenBalanceBefore) || 
-                                  (assetBalanceAfter != assetBalanceBefore);
-        
-        assertTrue(rebalancingOccurred, "Some rebalancing should have occurred");
-        
+        bool rebalancingOccurred = (pairedTokenBalanceAfter !=
+            pairedTokenBalanceBefore) ||
+            (assetBalanceAfter != assetBalanceBefore);
+
+        assertTrue(
+            rebalancingOccurred,
+            "Some rebalancing should have occurred"
+        );
+
         // The strategy should have rebalanced successfully without reverting
-        assertTrue(true, "Rebalancing with excess paired token completed successfully");
+        assertTrue(
+            true,
+            "Rebalancing with excess paired token completed successfully"
+        );
     }
 
     function test_rebalancing_forceExcessPairedTokenScenario(
@@ -660,9 +743,11 @@ contract ErrorAndBoundaryTests is Setup {
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
 
         // Get LP information to determine token order
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
         address token0 = steerLP.token0();
-        
+
         // Only run this test if the strategy's asset is NOT token0
         if (address(params.asset) == token0) {
             return; // Skip for token0 strategies
@@ -670,10 +755,10 @@ contract ErrorAndBoundaryTests is Setup {
 
         // Create a scenario that forces excess paired token rebalancing
         mintAndDepositIntoStrategy(strategy, user, _amount);
-        
+
         // First, let's get the current LP composition to understand the ratio
         (uint256 total0InLp, uint256 total1InLp) = steerLP.getTotalAmounts();
-        
+
         // Skip if LP is empty (covered by other tests)
         if (total0InLp == 0 && total1InLp == 0) {
             return;
@@ -682,9 +767,10 @@ contract ErrorAndBoundaryTests is Setup {
         // Airdrop a large amount of paired token to guarantee excess
         // Use a much larger amount to ensure we trigger the excess condition
         uint256 largeExcess = _amount * 10; // 10x the original amount
-        
+
         // Adjust for decimals
-        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
         if (decimalDiff > 0) {
             largeExcess = largeExcess / (10 ** uint256(decimalDiff));
         } else if (decimalDiff < 0) {
@@ -700,6 +786,9 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.tend();
 
         // Verify the function executed without reverting
-        assertTrue(true, "Successfully handled large excess paired token scenario");
+        assertTrue(
+            true,
+            "Successfully handled large excess paired token scenario"
+        );
     }
 }

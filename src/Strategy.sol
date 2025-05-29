@@ -371,7 +371,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             address(this),
             zeroForOne,
             int256(amountToSwap),
-            zeroForOne ? TickMath.MIN_SQRT_RATIO + 1 : TickMath.MAX_SQRT_RATIO - 1,
+            zeroForOne
+                ? TickMath.MIN_SQRT_RATIO + 1
+                : TickMath.MAX_SQRT_RATIO - 1,
             data
         );
     }
