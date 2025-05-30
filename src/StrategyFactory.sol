@@ -5,11 +5,9 @@ import {Strategy} from "./Strategy.sol";
 import {IStrategyInterface} from "./interfaces/IStrategyInterface.sol";
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
-import {EnumerableMap} from "@openzeppelin/contracts/utils/structs/EnumerableMap.sol";
 
 contract StrategyFactory {
     using EnumerableSet for EnumerableSet.AddressSet;
-    using EnumerableMap for EnumerableMap.Bytes32ToAddressMap;
 
     event NewStrategy(
         address indexed strategy,
@@ -23,8 +21,8 @@ contract StrategyFactory {
     address public performanceFeeRecipient;
     address public keeper;
 
-    /// @notice Track the deployments keccak(asset+lp) => strategy
-    EnumerableMap.Bytes32ToAddressMap private _deploymentMapping;
+    /// @notice Track the deployments asset => lp => strategy
+    mapping(address => mapping(address => address)) private _deploymentMapping;
     EnumerableSet.AddressSet private _deployments;
 
     constructor(
@@ -51,8 +49,7 @@ contract StrategyFactory {
         string calldata _name,
         address _steerLP
     ) external virtual returns (address) {
-        bytes32 strategyKey = getStrategyKey(_asset, _steerLP);
-        require(!_deploymentMapping.contains(strategyKey), "!new");
+        require(_deploymentMapping[_asset][_steerLP] == address(0), "!new");
 
         // tokenized strategies available setters.
         IStrategyInterface _newStrategy = IStrategyInterface(
@@ -60,7 +57,7 @@ contract StrategyFactory {
         );
         emit NewStrategy(address(_newStrategy), _asset, _steerLP);
         _deployments.add(address(_newStrategy));
-        _deploymentMapping.set(strategyKey, address(_newStrategy));
+        _deploymentMapping[_asset][_steerLP] = address(_newStrategy);
 
         _newStrategy.setPerformanceFeeRecipient(performanceFeeRecipient);
         _newStrategy.setKeeper(keeper);
@@ -106,14 +103,6 @@ contract StrategyFactory {
         address _asset,
         address _lp
     ) external view returns (address _strategy) {
-        bytes32 strategyKey = getStrategyKey(_asset, _lp);
-        (, _strategy) = _deploymentMapping.tryGet(strategyKey);
-    }
-
-    function getStrategyKey(
-        address _asset,
-        address _lp
-    ) private pure returns (bytes32) {
-        return keccak256(abi.encodePacked(_asset, _lp));
+        return _deploymentMapping[_asset][_lp];
     }
 }
