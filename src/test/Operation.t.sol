@@ -12,7 +12,7 @@ contract OperationTest is Setup {
     function _calculatePairedAssetDelta(
         TestParams memory params,
         uint256 maxDelta,
-        bool isVolatilePair
+        bool isVolatile
     ) internal pure returns (uint256) {
         int256 decimalDiff = int256(params.assetDecimals) -
             int256(params.pairedAssetDecimals);
@@ -25,7 +25,7 @@ contract OperationTest is Setup {
         }
 
         // Use higher minimum for volatile pairs
-        uint256 minPairedDelta = isVolatilePair ? 10000 : 1000;
+        uint256 minPairedDelta = isVolatile ? 10000 : 1000;
         if (pairedAssetMaxDelta < minPairedDelta) {
             pairedAssetMaxDelta = minPairedDelta;
         }
@@ -52,13 +52,8 @@ contract OperationTest is Setup {
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
 
-        // Use higher tolerance for volatile pairs like USDC/WPOL
-        bool isVolatilePair = (address(params.asset) == tokenAddrs["USDC"] &&
-            address(params.pairedAsset) == tokenAddrs["WPOL"]) ||
-            (address(params.asset) == tokenAddrs["WPOL"] &&
-                address(params.pairedAsset) == tokenAddrs["USDC"]);
-
-        uint256 maxDelta = isVolatilePair
+        // Use higher tolerance for volatile pairs (non-stable pairs)
+        uint256 maxDelta = !params.isStable
             ? (_amount * 0.20e18) / 1e18 // 20% tolerance for volatile pairs
             : (_amount * 0.10e18) / 1e18; // 10% tolerance for stable pairs
 
@@ -67,7 +62,7 @@ contract OperationTest is Setup {
             params,
             _amount,
             maxDelta,
-            isVolatilePair
+            !params.isStable
         );
     }
 
@@ -76,7 +71,7 @@ contract OperationTest is Setup {
         TestParams memory params,
         uint256 _amount,
         uint256 maxDelta,
-        bool isVolatilePair
+        bool isVolatile
     ) internal {
         // Deposit into strategy
         mintAndDepositIntoStrategy(strategy, user, _amount);
@@ -104,7 +99,7 @@ contract OperationTest is Setup {
         assertApproxEqAbs(
             params.pairedAsset.balanceOf(address(strategy)),
             0,
-            _calculatePairedAssetDelta(params, maxDelta, isVolatilePair),
+            _calculatePairedAssetDelta(params, maxDelta, isVolatile),
             "too much idle pairedAsset"
         );
 
@@ -154,13 +149,8 @@ contract OperationTest is Setup {
             bound(uint256(_initialDepositBps), 1000, 9000)
         );
 
-        // Use higher tolerance for volatile pairs like USDC/WPOL
-        bool isVolatilePair = (address(params.asset) == tokenAddrs["USDC"] &&
-            address(params.pairedAsset) == tokenAddrs["WPOL"]) ||
-            (address(params.asset) == tokenAddrs["WPOL"] &&
-                address(params.pairedAsset) == tokenAddrs["USDC"]);
-
-        uint256 maxDelta = isVolatilePair
+        // Use higher tolerance for volatile pairs (non-stable pairs)
+        uint256 maxDelta = !params.isStable
             ? (_amount * 0.20e18) / 1e18 // 20% tolerance for volatile pairs
             : (_amount * 0.10e18) / 1e18; // 10% tolerance for stable pairs
 
@@ -170,7 +160,7 @@ contract OperationTest is Setup {
             _amount,
             _initialDepositBps,
             maxDelta,
-            isVolatilePair
+            !params.isStable
         );
     }
 
@@ -180,7 +170,7 @@ contract OperationTest is Setup {
         uint256 _amount,
         uint16 _initialDepositBps,
         uint256 maxDelta,
-        bool isVolatilePair
+        bool isVolatile
     ) internal {
         // Deposit into strategy
         airdrop(params.asset, user, _amount);
@@ -212,7 +202,7 @@ contract OperationTest is Setup {
         uint256 pairedAssetMaxDelta = _calculatePairedAssetDelta(
             params,
             maxDelta,
-            isVolatilePair
+            isVolatile
         );
         assertApproxEqAbs(
             params.pairedAsset.balanceOf(address(strategy)),
