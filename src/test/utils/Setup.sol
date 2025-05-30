@@ -7,6 +7,7 @@ import {Test} from "forge-std/Test.sol";
 import {Strategy, ERC20, ISushiMultiPositionLiquidityManager} from "../../Strategy.sol";
 import {StrategyFactory} from "../../StrategyFactory.sol";
 import {IStrategyInterface} from "../../interfaces/IStrategyInterface.sol";
+import {IUniswapV3Pool} from "@uniswap-v3-core/interfaces/IUniswapV3Pool.sol";
 
 import {EnumerableSet} from "@openzeppelin/contracts/utils/structs/EnumerableSet.sol";
 
@@ -238,6 +239,84 @@ contract Setup is Test, IEvents {
                 ERC20(pairedAsset).decimals(),
                 asset != tokenAddrs["WPOL"] && pairedAsset != tokenAddrs["WPOL"]
             );
+    }
+
+    function getExchangeRate(
+        address _strategy
+    ) internal view returns (uint256) {
+        IStrategyInterface strategy = IStrategyInterface(_strategy);
+        ISushiMultiPositionLiquidityManager lp = ISushiMultiPositionLiquidityManager(
+                strategy.STEER_LP()
+            );
+
+        // Get pool price
+        IUniswapV3Pool pool = IUniswapV3Pool(lp.pool());
+        (uint160 sqrtPriceX96, , , , , , ) = pool.slot0();
+
+        // Calculate exchange rate
+        uint256 priceX96 = (uint256(sqrtPriceX96) * uint256(sqrtPriceX96)) /
+            (1 << 96);
+
+        // Get decimals directly without calling _getTestParams
+        address asset = address(strategy.asset());
+        address pairedAsset = lp.token0() == asset ? lp.token1() : lp.token0();
+        uint256 assetDecimals = ERC20(asset).decimals();
+        uint256 pairedAssetDecimals = ERC20(pairedAsset).decimals();
+
+        // Normalize for decimals
+        if (assetDecimals > pairedAssetDecimals) {
+            priceX96 = priceX96 * (10 ** (assetDecimals - pairedAssetDecimals));
+        } else if (pairedAssetDecimals > assetDecimals) {
+            priceX96 = priceX96 / (10 ** (pairedAssetDecimals - assetDecimals));
+        }
+
+        return priceX96;
+    }
+
+    function calculateExchangeRateAdjustedDelta(
+        uint256 baseAmount,
+        uint256 exchangeRate,
+        uint256 percentageBps
+    ) internal pure returns (uint256) {
+        // Calculate delta considering exchange rate impact
+        uint256 baseDelta = (baseAmount * percentageBps) / 10000;
+
+        // Adjust delta based on exchange rate volatility
+        // If exchange rate is far from 1:1, increase tolerance
+        uint256 rateDeviation = exchangeRate > (1 << 96)
+            ? ((exchangeRate - (1 << 96)) * 100) / (1 << 96)
+            : (((1 << 96) - exchangeRate) * 100) / (1 << 96);
+
+        // Increase delta by rate deviation percentage
+        uint256 adjustedDelta = baseDelta + (baseDelta * rateDeviation) / 100;
+
+        return adjustedDelta;
+    }
+
+    function calculatePairedAssetDelta(
+        uint256 assetDelta,
+        uint256 assetDecimals,
+        uint256 pairedAssetDecimals,
+        uint256 exchangeRate
+    ) internal pure returns (uint256) {
+        // Convert asset delta to paired asset terms
+        uint256 pairedDelta = (assetDelta * (1 << 96)) / exchangeRate;
+
+        // Adjust for decimal differences
+        if (assetDecimals > pairedAssetDecimals) {
+            pairedDelta =
+                pairedDelta /
+                (10 ** (assetDecimals - pairedAssetDecimals));
+        } else if (pairedAssetDecimals > assetDecimals) {
+            pairedDelta =
+                pairedDelta *
+                (10 ** (pairedAssetDecimals - assetDecimals));
+        }
+
+        // Add extra tolerance for rounding and small balances
+        // Minimum of 1000 units in paired asset's smallest denomination
+        uint256 minDelta = 1000;
+        return pairedDelta > minDelta ? pairedDelta : minDelta;
     }
 
     function logStrategyInfo(TestParams memory params) internal view {

@@ -1232,9 +1232,12 @@ contract ErrorAndBoundaryTests is Setup {
         strategy.tend();
 
         // Get Steer LP positions to determine target price
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(params.lp);
-        (int24[] memory lowerTicks, int24[] memory upperTicks, ) = steerLP.getPositions();
-        
+        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
+                params.lp
+            );
+        (int24[] memory lowerTicks, int24[] memory upperTicks, ) = steerLP
+            .getPositions();
+
         // Skip if no positions
         if (lowerTicks.length == 0) return;
 
@@ -1316,8 +1319,9 @@ contract ErrorAndBoundaryTests is Setup {
         // Get current state and positions
         (, int24 currentTickBefore, , , , , ) = IUniswapV3Pool(poolAddress)
             .slot0();
-        (int24[] memory lowerTicks, int24[] memory upperTicks, ) = steerLP.getPositions();
-        
+        (int24[] memory lowerTicks, int24[] memory upperTicks, ) = steerLP
+            .getPositions();
+
         // Skip if no positions
         if (lowerTicks.length == 0) return;
 
@@ -1369,19 +1373,20 @@ contract ErrorAndBoundaryTests is Setup {
         int24 targetTick
     ) internal {
         IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
-        
+
         // Get current state
-        (uint160 currentSqrtPriceX96, int24 currentTick, , , , , ) = pool.slot0();
-        
+        (uint160 currentSqrtPriceX96, int24 currentTick, , , , , ) = pool
+            .slot0();
+
         // Calculate target sqrtPriceX96 based on target tick
         uint160 targetSqrtPriceX96 = TickMath.getSqrtRatioAtTick(targetTick);
-        
+
         // Determine swap direction
         bool zeroForOne = targetSqrtPriceX96 < currentSqrtPriceX96;
-        
+
         // Calculate a reasonable swap amount (not too large to avoid RPC issues)
         uint256 swapAmount = params.minFuzzAmount * 10;
-        
+
         // Airdrop the token we're swapping from
         if (zeroForOne) {
             // Swapping token0 for token1 (price goes down)
@@ -1392,25 +1397,29 @@ contract ErrorAndBoundaryTests is Setup {
             address token1 = pool.token1();
             airdrop(ERC20(token1), address(this), swapAmount);
         }
-        
+
         // Perform controlled swap with price limit
-        try pool.swap(
-            address(this),
-            zeroForOne,
-            int256(swapAmount),
-            targetSqrtPriceX96,
-            ""
-        ) {
+        try
+            pool.swap(
+                address(this),
+                zeroForOne,
+                int256(swapAmount),
+                targetSqrtPriceX96,
+                ""
+            )
+        {
             // Swap succeeded
         } catch {
             // If swap fails, try with smaller amount
-            try pool.swap(
-                address(this),
-                zeroForOne,
-                int256(swapAmount / 10),
-                targetSqrtPriceX96,
-                ""
-            ) {
+            try
+                pool.swap(
+                    address(this),
+                    zeroForOne,
+                    int256(swapAmount / 10),
+                    targetSqrtPriceX96,
+                    ""
+                )
+            {
                 // Smaller swap succeeded
             } catch {
                 // Even smaller swap failed, continue with test
@@ -1426,17 +1435,17 @@ contract ErrorAndBoundaryTests is Setup {
     ) internal {
         // Get current tick to determine appropriate target
         (, int24 currentTick, , , , , ) = IUniswapV3Pool(poolAddress).slot0();
-        
+
         // Calculate target tick (move by significant amount)
         int24 targetTick;
         if (moveUp) {
             targetTick = currentTick + 5000; // Move up significantly
             if (targetTick > 887000) targetTick = 887000; // Cap at near max
         } else {
-            targetTick = currentTick - 5000; // Move down significantly  
+            targetTick = currentTick - 5000; // Move down significantly
             if (targetTick < -887000) targetTick = -887000; // Cap at near min
         }
-        
+
         _performControlledPriceMovement(poolAddress, params, targetTick);
     }
 
