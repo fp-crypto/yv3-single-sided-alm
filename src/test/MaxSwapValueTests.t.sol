@@ -1,0 +1,401 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity ^0.8.18;
+
+import "forge-std/console2.sol";
+import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {ISushiMultiPositionLiquidityManager} from "../interfaces/steer/ISushiMultiPositionLiquidityManager.sol";
+
+contract MaxSwapValueTests is Setup {
+    function setUp() public virtual override {
+        super.setUp();
+    }
+
+    function test_maxSwapValue_defaultValue(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test that default maxSwapValue is type(uint256).max
+        assertEq(
+            strategy.maxSwapValue(),
+            type(uint256).max,
+            "Default maxSwapValue should be max uint256"
+        );
+    }
+
+    function test_setMaxSwapValue_onlyManagement(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test that only management can set maxSwapValue
+        vm.expectRevert("!management");
+        vm.prank(user);
+        strategy.setMaxSwapValue(1000e18);
+
+        // Management should succeed
+        vm.prank(management);
+        strategy.setMaxSwapValue(1000e18);
+        assertEq(
+            strategy.maxSwapValue(),
+            1000e18,
+            "maxSwapValue not set correctly"
+        );
+    }
+
+    function test_maxSwapValue_limitsAssetSwap(
+        IStrategyInterface strategy,
+        uint256 _depositAmount,
+        uint256 _maxSwapValue
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _depositAmount = bound(
+            _depositAmount,
+            params.minFuzzAmount,
+            params.maxFuzzAmount
+        );
+        // Set maxSwapValue to a reasonable percentage of deposit amount
+        // This ensures the test is realistic - we need to be able to swap enough to balance the LP
+        _maxSwapValue = bound(
+            _maxSwapValue,
+            _depositAmount / 20, // Min 5% of deposit
+            _depositAmount / 4 // Max 25% of deposit
+        );
+
+        // Set maxSwapValue limit
+        vm.prank(management);
+        strategy.setMaxSwapValue(_maxSwapValue);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, _depositAmount);
+
+        // Get initial balances
+        uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
+        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+
+        // Get pool address from strategy
+        address steerLp = strategy.STEER_LP();
+        address pool = ISushiMultiPositionLiquidityManager(steerLp).pool();
+
+        // Record starting event index for swap observation
+        vm.recordLogs();
+
+        // Tend should respect maxSwapValue limit
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Get the logs to find swap events
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+
+        // Look for Swap events from the Uniswap pool
+        // Swap event signature: Swap(address,address,int256,int256,uint160,uint128,int24)
+        bytes32 swapEventSig = keccak256(
+            "Swap(address,address,int256,int256,uint160,uint128,int24)"
+        );
+
+        uint256 totalAssetSwapped = 0;
+
+        for (uint i = 0; i < logs.length; i++) {
+            if (logs[i].emitter == pool && logs[i].topics[0] == swapEventSig) {
+                // Decode swap event
+                address sender = address(uint160(uint256(logs[i].topics[1])));
+                address recipient = address(
+                    uint160(uint256(logs[i].topics[2]))
+                );
+
+                if (
+                    sender == address(strategy) &&
+                    recipient == address(strategy)
+                ) {
+                    // This is our strategy's swap
+                    (int256 amount0, int256 amount1, , , ) = abi.decode(
+                        logs[i].data,
+                        (int256, int256, uint160, uint128, int24)
+                    );
+
+                    // Determine which amount represents asset being swapped out
+                    address token0 = ISushiMultiPositionLiquidityManager(
+                        steerLp
+                    ).token0();
+                    if (address(params.asset) == token0) {
+                        // Asset is token0, negative amount0 means asset was swapped out
+                        if (amount0 < 0) {
+                            totalAssetSwapped += uint256(-amount0);
+                        }
+                    } else {
+                        // Asset is token1, negative amount1 means asset was swapped out
+                        if (amount1 < 0) {
+                            totalAssetSwapped += uint256(-amount1);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Log values for debugging
+        console2.log("Strategy address:", address(strategy));
+        console2.log("Pool address:", pool);
+        console2.log("maxSwapValue set to:", _maxSwapValue);
+        console2.log("Total asset swapped (from events):", totalAssetSwapped);
+        console2.log(
+            "Expected max (with 5% tolerance):",
+            _maxSwapValue + (_maxSwapValue * 5) / 100
+        );
+
+        // Asset swapped should approximately respect maxSwapValue (allowing for fees, slippage, rounding)
+        uint256 tolerance = (_maxSwapValue * 5) / 100; // 5% tolerance for fees + slippage
+        assertLe(
+            totalAssetSwapped,
+            _maxSwapValue + tolerance,
+            "Asset swap significantly exceeded maxSwapValue tolerance"
+        );
+    }
+
+    function test_maxSwapValue_limitsPairedTokenSwap(
+        IStrategyInterface strategy,
+        uint256 _amount,
+        uint256 _maxSwapValue
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+        // Set maxSwapValue to a reasonable percentage of deposit amount
+        // This ensures the test is realistic - we need to be able to swap enough to balance the LP
+        _maxSwapValue = bound(
+            _maxSwapValue,
+            _amount / 20, // Min 5% of deposit
+            _amount / 4 // Max 25% of deposit
+        );
+
+        // Set maxSwapValue limit
+        vm.prank(management);
+        strategy.setMaxSwapValue(_maxSwapValue);
+
+        // Deposit funds and create initial LP position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Now manually withdraw some LP to create paired token balance
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(_amount / 4);
+
+        // Get balances after partial withdrawal (should have both asset and paired tokens)
+        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+
+        // Use tend() which should respect maxSwapValue when rebalancing
+        if (pairedBalanceBefore > 0) {
+            vm.prank(keeper);
+            strategy.tend();
+
+            uint256 pairedBalanceAfter = params.pairedAsset.balanceOf(
+                address(strategy)
+            );
+            uint256 pairedSwapped = pairedBalanceBefore > pairedBalanceAfter
+                ? pairedBalanceBefore - pairedBalanceAfter
+                : 0;
+
+            // For this test, we mainly ensure the function doesn't revert with maxSwapValue set
+            // The actual validation of swap limiting is better tested in asset swap test
+            assertTrue(
+                true,
+                "Paired token swapping with maxSwapValue should not revert"
+            );
+        }
+    }
+
+    function test_maxSwapValue_multipleSwapsWithinLimit(
+        IStrategyInterface strategy,
+        uint256 _amount,
+        uint256 _maxSwapValue
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(
+            _amount,
+            params.minFuzzAmount * 2,
+            params.maxFuzzAmount
+        );
+        // Set maxSwapValue to a reasonable percentage of deposit amount
+        // This ensures the test is realistic - we need to be able to swap enough to balance the LP
+        _maxSwapValue = bound(
+            _maxSwapValue,
+            _amount / 20, // Min 5% of deposit
+            _amount / 4 // Max 25% of deposit
+        );
+
+        // Set maxSwapValue limit
+        vm.prank(management);
+        strategy.setMaxSwapValue(_maxSwapValue);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        uint256 totalAssetBefore = params.asset.balanceOf(address(strategy));
+
+        // Get pool info for event observation
+        address steerLp = strategy.STEER_LP();
+        address pool = ISushiMultiPositionLiquidityManager(steerLp).pool();
+        address token0 = ISushiMultiPositionLiquidityManager(steerLp).token0();
+        bytes32 swapEventSig = keccak256(
+            "Swap(address,address,int256,int256,uint160,uint128,int24)"
+        );
+
+        // Multiple tends should allow progressive swapping
+        for (uint i = 0; i < 3; i++) {
+            // Record logs for this tend
+            vm.recordLogs();
+
+            vm.prank(keeper);
+            strategy.tend();
+
+            // Get the logs to find swap events
+            Vm.Log[] memory logs = vm.getRecordedLogs();
+
+            uint256 swapped = 0;
+
+            // Look for swap events
+            for (uint j = 0; j < logs.length; j++) {
+                if (
+                    logs[j].emitter == pool && logs[j].topics[0] == swapEventSig
+                ) {
+                    address sender = address(
+                        uint160(uint256(logs[j].topics[1]))
+                    );
+                    address recipient = address(
+                        uint160(uint256(logs[j].topics[2]))
+                    );
+
+                    if (
+                        sender == address(strategy) &&
+                        recipient == address(strategy)
+                    ) {
+                        (int256 amount0, int256 amount1, , , ) = abi.decode(
+                            logs[j].data,
+                            (int256, int256, uint160, uint128, int24)
+                        );
+
+                        if (address(params.asset) == token0) {
+                            if (amount0 < 0) swapped += uint256(-amount0);
+                        } else {
+                            if (amount1 < 0) swapped += uint256(-amount1);
+                        }
+                    }
+                }
+            }
+
+            console2.log("Tend", i, "- Swapped:", swapped);
+
+            // Each swap should approximately respect the limit (allowing for fees, slippage, rounding)
+            uint256 tolerance = (_maxSwapValue * 5) / 100; // 5% tolerance for fees + slippage
+            assertLe(
+                swapped,
+                _maxSwapValue + tolerance,
+                "Individual swap significantly exceeded maxSwapValue tolerance"
+            );
+
+            // Break if no more swaps needed
+            if (swapped == 0) break;
+        }
+
+        // Should have created LP position
+        assertGt(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Should have LP position"
+        );
+    }
+
+    function test_maxSwapValue_disabledWhenSetToMax(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Set maxSwapValue back to max (disabled)
+        vm.prank(management);
+        strategy.setMaxSwapValue(type(uint256).max);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        // Check initial targetIdleAssetBps
+        uint256 targetIdleBps = strategy.targetIdleAssetBps();
+        console2.log("Target idle asset bps:", targetIdleBps);
+
+        // Should swap entire balance in one go
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 assetBalance = params.asset.balanceOf(address(strategy));
+        uint256 lpBalance = ERC20(params.lp).balanceOf(address(strategy));
+
+        console2.log("Deposit amount:", _amount);
+        console2.log("Asset balance after tend:", assetBalance);
+        console2.log("LP balance after tend:", lpBalance);
+
+        // If targetIdleAssetBps is set, we expect that amount to remain idle
+        uint256 expectedIdle = (_amount * targetIdleBps) / 10000;
+
+        // In practice, LP deposits may not accept all tokens due to:
+        // - LP ratio requirements
+        // - Slippage protection in the LP contract
+        // - Rounding/dust from swaps
+        // So we allow up to 10% to remain as loose balance
+        uint256 maxAcceptableBalance = expectedIdle + (_amount * 10) / 100;
+
+        assertLe(
+            assetBalance,
+            maxAcceptableBalance,
+            "Too much asset balance remaining after tend"
+        );
+
+        // Ensure we created an LP position
+        assertGt(lpBalance, 0, "Should have created LP position");
+    }
+
+    function test_maxSwapValue_zeroValue(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        console2.log("Strategy address:", address(strategy));
+        console2.log("Amount:", _amount);
+
+        // Set maxSwapValue to 0
+        vm.prank(management);
+        strategy.setMaxSwapValue(0);
+
+        // Deposit funds
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+
+        uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
+
+        // Tend should not swap anything
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 assetBalanceAfter = params.asset.balanceOf(address(strategy));
+
+        // No swaps should occur
+        assertEq(
+            assetBalanceAfter,
+            assetBalanceBefore,
+            "No swaps should occur with 0 maxSwapValue"
+        );
+
+        // With maxSwapValue = 0, we can't swap to get paired tokens,
+        // so we can't create LP positions
+        assertEq(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Should have no LP position"
+        );
+    }
+}

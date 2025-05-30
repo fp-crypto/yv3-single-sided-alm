@@ -52,6 +52,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice The strategy deposit limit
     uint256 public depositLimit = type(uint256).max;
 
+    /// @notice Maximum value that can be swapped in a single transaction (in asset terms)
+    uint256 public maxSwapValue = type(uint256).max;
+
     /*//////////////////////////////////////////////////////////////
                               STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -361,6 +364,36 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 amountToSwap,
         bool zeroForOne
     ) internal {
+        // Apply maxSwapValue limit if not set to max
+        uint256 _maxSwapValue = maxSwapValue;
+        if (_maxSwapValue != type(uint256).max) {
+            uint256 swapValueInAsset;
+            if (tokenIn == address(asset)) {
+                // Swapping asset, amount is already in asset terms
+                swapValueInAsset = amountToSwap;
+            } else {
+                // Swapping paired token, convert to asset value
+                swapValueInAsset = _valueOfPairedTokenInAsset(amountToSwap);
+            }
+
+            if (swapValueInAsset > _maxSwapValue) {
+                // Reduce swap amount to respect limit
+                if (tokenIn == address(asset)) {
+                    amountToSwap = _maxSwapValue;
+                } else {
+                    // Convert maxSwapValue back to paired token amount
+                    (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL)
+                        .slot0();
+                    amountToSwap = _convertAssetValueToPairedTokenQuantity(
+                        _maxSwapValue,
+                        sqrtPriceX96
+                    );
+                }
+            }
+        }
+
+        if (amountToSwap == 0) return;
+
         SwapCallbackData memory callbackData = SwapCallbackData(
             tokenIn,
             amountToSwap
@@ -518,6 +551,25 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         availableForDeposit = asset.balanceOf(address(this));
         if (availableForDeposit <= targetIdleAmount) return;
+
+        // Update paired token balance after swap
+        uint256 pairedTokenBalanceAfterSwap = ERC20(_PAIRED_TOKEN).balanceOf(
+            address(this)
+        );
+
+        // Check if we need paired tokens for a balanced deposit but can't get them due to swap restrictions
+        if (
+            targetPairedTokenValueInAsset > 0 &&
+            pairedTokenBalanceAfterSwap == 0
+        ) {
+            uint256 _maxSwapValue = maxSwapValue;
+            if (_maxSwapValue == 0) {
+                // maxSwapValue is 0, so we can't swap to get paired tokens
+                // Don't attempt deposit as Steer LP will reject single-sided deposits when it expects both tokens
+                return;
+            }
+        }
+
         _performLpDeposit(availableForDeposit - targetIdleAmount);
     }
 
@@ -649,6 +701,15 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) external onlyManagement {
         require(_targetIdleAssetBps <= 10000, "!bps"); // dev: Target idle asset cannot exceed 100% (10000 bps)
         targetIdleAssetBps = _targetIdleAssetBps;
+    }
+
+    /**
+     * @notice Sets the maximum swap value per transaction
+     * @param _maxSwapValue Maximum value that can be swapped in a single transaction (in asset terms)
+     * @dev Set to type(uint256).max to disable the limit
+     */
+    function setMaxSwapValue(uint256 _maxSwapValue) external onlyManagement {
+        maxSwapValue = _maxSwapValue;
     }
 
     /**
