@@ -27,8 +27,8 @@ interface IStrategyInterface is IBaseHealthCheck {
     function maxSwapValue() external view returns (uint256);
     function useAuctions() external view returns (bool);
     function auction() external view returns (address);
-    function minTendWait() external view returns (uint256);
-    function maxTendBaseFee() external view returns (uint256);
+    function minTendWait() external view returns (uint24);
+    function maxTendBaseFeeGwei() external view returns (uint8);
     function lastTend() external view returns (uint256);
 
     // Management functions
@@ -37,8 +37,8 @@ interface IStrategyInterface is IBaseHealthCheck {
     function setTargetIdleAssetBps(uint16 _targetIdleAssetBps) external;
     function setMaxSwapValue(uint256 _maxSwapValue) external;
     function setUseAuctions(bool _useAuctions) external;
-    function setMinTendWait(uint256 _minTendWait) external;
-    function setMaxTendBaseFee(uint256 _maxTendBaseFee) external;
+    function setMinTendWait(uint24 _minTendWait) external;
+    function setMaxTendBaseFee(uint8 _maxTendBaseFeeGwei) external;
     function manualSwapPairedTokenToAsset(uint256 _amount) external;
     function manualWithdrawFromLp(uint256 _amount) external;
 

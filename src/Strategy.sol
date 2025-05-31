@@ -49,17 +49,17 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice Target idle asset in basis points
     uint16 public targetIdleAssetBps;
 
+    /// @notice Maximum acceptable base fee for tends in gwei
+    uint8 public maxTendBaseFeeGwei = 100;
+
+    /// @notice Minimum wait time between tends in seconds
+    uint24 public minTendWait = 5 minutes;
+
     /// @notice The strategy deposit limit
     uint256 public depositLimit = type(uint256).max;
 
     /// @notice Maximum value that can be swapped in a single transaction (in asset terms)
     uint256 public maxSwapValue = type(uint256).max;
-
-    /// @notice Minimum wait time between tends in seconds
-    uint256 public minTendWait = 1 hours;
-
-    /// @notice Maximum acceptable base fee for tends in gwei
-    uint256 public maxTendBaseFee = 100 gwei;
 
     /// @notice Timestamp of the last tend
     uint256 public lastTend;
@@ -131,12 +131,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     // @inheritdoc BaseStrategy
     function _tendTrigger() internal view override returns (bool) {
         // Check if minimum wait time has passed
-        if (block.timestamp < lastTend + minTendWait) {
+        if (block.timestamp < lastTend + uint256(minTendWait)) {
             return false;
         }
 
         // Check if base fee is acceptable
-        if (block.basefee > maxTendBaseFee) {
+        if (block.basefee > uint256(maxTendBaseFeeGwei) * 1 gwei) {
             return false;
         }
 
@@ -754,19 +754,19 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param _minTendWait Minimum wait time in seconds
      * @dev Can only be called by management
      */
-    function setMinTendWait(uint256 _minTendWait) external onlyManagement {
+    function setMinTendWait(uint24 _minTendWait) external onlyManagement {
         minTendWait = _minTendWait;
     }
 
     /**
      * @notice Sets the maximum acceptable base fee for tends
-     * @param _maxTendBaseFee Maximum base fee in wei
+     * @param _maxTendBaseFeeGwei Maximum base fee in gwei
      * @dev Can only be called by management
      */
     function setMaxTendBaseFee(
-        uint256 _maxTendBaseFee
+        uint8 _maxTendBaseFeeGwei
     ) external onlyManagement {
-        maxTendBaseFee = _maxTendBaseFee;
+        maxTendBaseFeeGwei = _maxTendBaseFeeGwei;
     }
 
     /**
