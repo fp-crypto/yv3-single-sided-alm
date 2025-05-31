@@ -535,6 +535,19 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         if (lpToken0Balance == 0 && lpToken1Balance == 0) return; // do not be first lp
 
+        // Early exit if maxSwapValue = 0 and LP needs both tokens but we can't swap
+        if (maxSwapValue == 0) {
+            bool lpIsOutOfRange = (lpToken0Balance == 0) ||
+                (lpToken1Balance == 0);
+            bool weHaveOnlyOneToken = (pairedTokenBalance == 0) ||
+                (availableForDeposit == 0);
+
+            if (!lpIsOutOfRange && weHaveOnlyOneToken) {
+                return; // LP needs both tokens but we can't swap to get them
+            }
+        }
+
+        // Calculate target allocation and perform rebalancing swap
         uint256 targetPairedTokenValueInAsset = _calculateAmountToSwapForDeposit(
                 totalDepositValueInAsset,
                 lpToken0Balance,
@@ -551,24 +564,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         availableForDeposit = asset.balanceOf(address(this));
         if (availableForDeposit <= targetIdleAmount) return;
-
-        // Update paired token balance after swap
-        uint256 pairedTokenBalanceAfterSwap = ERC20(_PAIRED_TOKEN).balanceOf(
-            address(this)
-        );
-
-        // Check if we need paired tokens for a balanced deposit but can't get them due to swap restrictions
-        if (
-            targetPairedTokenValueInAsset > 0 &&
-            pairedTokenBalanceAfterSwap == 0
-        ) {
-            uint256 _maxSwapValue = maxSwapValue;
-            if (_maxSwapValue == 0) {
-                // maxSwapValue is 0, so we can't swap to get paired tokens
-                // Don't attempt deposit as Steer LP will reject single-sided deposits when it expects both tokens
-                return;
-            }
-        }
 
         _performLpDeposit(availableForDeposit - targetIdleAmount);
     }
