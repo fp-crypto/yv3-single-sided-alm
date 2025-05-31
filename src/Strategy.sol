@@ -49,20 +49,26 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice Target idle asset in basis points
     uint16 public targetIdleAssetBps;
 
+    /// @notice Buffer for target idle asset in basis points (e.g., 1000 = 10% buffer)
+    uint16 public targetIdleBufferBps = 1000; // 10% default
+
     /// @notice Maximum acceptable base fee for tends in gwei
     uint8 public maxTendBaseFeeGwei = 100;
 
     /// @notice Minimum wait time between tends in seconds
     uint24 public minTendWait = 5 minutes;
 
+    /// @notice Timestamp of the last tend
+    uint64 public lastTend;
+
+    /// @notice Minimum asset amount for any operation (dust threshold)
+    uint128 public minAsset;
+
     /// @notice The strategy deposit limit
     uint256 public depositLimit = type(uint256).max;
 
     /// @notice Maximum value that can be swapped in a single transaction (in asset terms)
     uint256 public maxSwapValue = type(uint256).max;
-
-    /// @notice Timestamp of the last tend
-    uint256 public lastTend;
 
     /*//////////////////////////////////////////////////////////////
                               STRUCTS
@@ -122,10 +128,34 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     // @inheritdoc BaseStrategy
     function _tend(uint256 _totalIdle) internal override {
-        if (_totalIdle > 0) {
+        uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
+        uint256 _minAsset = uint256(minAsset);
+
+        if (_targetIdleAssetBps > 0) {
+            // We have a target idle, check if we need to rebalance
+            uint256 totalAssets = TokenizedStrategy.totalAssets();
+            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
+                10000;
+
+            if (_totalIdle > targetIdleAmount) {
+                // Check if excess is above minAsset threshold
+                uint256 excess = _totalIdle - targetIdleAmount;
+                if (excess >= _minAsset) {
+                    _depositInLp();
+                }
+            } else if (_totalIdle < targetIdleAmount) {
+                // Check if deficit is above minAsset threshold
+                uint256 deficit = targetIdleAmount - _totalIdle;
+                if (deficit >= _minAsset) {
+                    _withdrawFromLp(deficit);
+                }
+            }
+        } else if (_totalIdle >= _minAsset) {
+            // No target set, deposit idle assets if above threshold
             _depositInLp();
         }
-        lastTend = block.timestamp;
+
+        lastTend = uint64(block.timestamp);
     }
 
     // @inheritdoc BaseStrategy
@@ -140,27 +170,32 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             return false;
         }
 
-        // Check if we have idle assets above the target that could be LP'd
+        // Get current idle assets
         uint256 idleAsset = asset.balanceOf(address(this));
-        if (idleAsset == 0) {
-            return false;
-        }
 
-        // If target idle is set, check if we're above it
+        // If target idle is set, check if we need to rebalance
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
                 10000;
 
-            // Only trigger tend if idle assets exceed target by a meaningful amount
-            // Using 10% buffer to avoid frequent small tends
-            if (idleAsset <= (targetIdleAmount * 110) / 100) {
-                return false;
-            }
+            // Calculate bounds using configurable buffer
+            uint256 bufferAmount = (targetIdleAmount *
+                uint256(targetIdleBufferBps)) / 10000;
+            uint256 upperBound = targetIdleAmount + bufferAmount;
+            uint256 lowerBound = targetIdleAmount > bufferAmount
+                ? targetIdleAmount - bufferAmount
+                : 0;
+
+            // Trigger if we're outside the acceptable range
+            // Let _tend handle minAsset checks
+            return idleAsset > upperBound || idleAsset < lowerBound;
         }
 
-        return true;
+        // If no target is set, only trigger if we have idle assets
+        // Let _tend handle minAsset checks
+        return idleAsset > 0;
     }
 
     // @inheritdoc BaseStrategy
@@ -431,6 +466,24 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                         sqrtPriceX96
                     );
                 }
+            }
+        }
+
+        // Apply minAsset check after all amount adjustments
+        uint256 _minAsset = uint256(minAsset);
+        if (_minAsset > 0) {
+            uint256 swapValueInAsset;
+            if (tokenIn == address(asset)) {
+                // Swapping asset, amount is already in asset terms
+                swapValueInAsset = amountToSwap;
+            } else {
+                // Swapping paired token, convert to asset value
+                swapValueInAsset = _valueOfPairedTokenInAsset(amountToSwap);
+            }
+
+            // Skip swap if below minimum threshold
+            if (swapValueInAsset < _minAsset) {
+                return;
             }
         }
 
@@ -767,6 +820,27 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint8 _maxTendBaseFeeGwei
     ) external onlyManagement {
         maxTendBaseFeeGwei = _maxTendBaseFeeGwei;
+    }
+
+    /**
+     * @notice Sets the target idle buffer in basis points
+     * @param _targetIdleBufferBps Buffer in basis points (e.g., 1000 = 10%)
+     * @dev Can only be called by management
+     */
+    function setTargetIdleBufferBps(
+        uint16 _targetIdleBufferBps
+    ) external onlyManagement {
+        require(_targetIdleBufferBps <= 10000, "!bps"); // dev: Buffer cannot exceed 100%
+        targetIdleBufferBps = _targetIdleBufferBps;
+    }
+
+    /**
+     * @notice Sets the minimum asset amount for any operation (dust threshold)
+     * @param _minAsset Minimum amount of assets for any operation
+     * @dev Can only be called by management
+     */
+    function setMinAsset(uint128 _minAsset) external onlyManagement {
+        minAsset = _minAsset;
     }
 
     /**
