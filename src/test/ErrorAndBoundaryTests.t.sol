@@ -309,32 +309,6 @@ contract ErrorAndBoundaryTests is Setup {
         assertEq(ERC20(params.lp).balanceOf(address(strategy)), 0);
     }
 
-    function test_tendTrigger_alwaysFalse(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Tend trigger should always return false (current implementation)
-        (bool trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "Tend trigger should always be false");
-
-        // Even after deposit
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        (trigger, ) = strategy.tendTrigger();
-        assertFalse(
-            trigger,
-            "Tend trigger should still be false after deposit"
-        );
-
-        // Even after tend
-        vm.prank(keeper);
-        strategy.tend();
-        (trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "Tend trigger should still be false after tend");
-    }
-
     function test_harvestAndReport_basicFunctionality(
         IStrategyInterface strategy,
         uint256 _amount

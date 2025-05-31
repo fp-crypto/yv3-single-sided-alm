@@ -55,6 +55,15 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice Maximum value that can be swapped in a single transaction (in asset terms)
     uint256 public maxSwapValue = type(uint256).max;
 
+    /// @notice Minimum wait time between tends in seconds
+    uint256 public minTendWait = 1 hours;
+
+    /// @notice Maximum acceptable base fee for tends in gwei
+    uint256 public maxTendBaseFee = 100 gwei;
+
+    /// @notice Timestamp of the last tend
+    uint256 public lastTend;
+
     /*//////////////////////////////////////////////////////////////
                               STRUCTS
     //////////////////////////////////////////////////////////////*/
@@ -116,10 +125,43 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         if (_totalIdle > 0) {
             _depositInLp();
         }
+        lastTend = block.timestamp;
     }
 
     // @inheritdoc BaseStrategy
-    function _tendTrigger() internal view override returns (bool) {}
+    function _tendTrigger() internal view override returns (bool) {
+        // Check if minimum wait time has passed
+        if (block.timestamp < lastTend + minTendWait) {
+            return false;
+        }
+
+        // Check if base fee is acceptable
+        if (block.basefee > maxTendBaseFee) {
+            return false;
+        }
+
+        // Check if we have idle assets above the target that could be LP'd
+        uint256 idleAsset = asset.balanceOf(address(this));
+        if (idleAsset == 0) {
+            return false;
+        }
+
+        // If target idle is set, check if we're above it
+        uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
+        if (_targetIdleAssetBps > 0) {
+            uint256 totalAssets = TokenizedStrategy.totalAssets();
+            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
+                10000;
+
+            // Only trigger tend if idle assets exceed target by a meaningful amount
+            // Using 10% buffer to avoid frequent small tends
+            if (idleAsset <= (targetIdleAmount * 110) / 100) {
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     // @inheritdoc BaseStrategy
     function _emergencyWithdraw(uint256 _amount) internal override {
@@ -705,6 +747,26 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      */
     function setMaxSwapValue(uint256 _maxSwapValue) external onlyManagement {
         maxSwapValue = _maxSwapValue;
+    }
+
+    /**
+     * @notice Sets the minimum wait time between tends
+     * @param _minTendWait Minimum wait time in seconds
+     * @dev Can only be called by management
+     */
+    function setMinTendWait(uint256 _minTendWait) external onlyManagement {
+        minTendWait = _minTendWait;
+    }
+
+    /**
+     * @notice Sets the maximum acceptable base fee for tends
+     * @param _maxTendBaseFee Maximum base fee in wei
+     * @dev Can only be called by management
+     */
+    function setMaxTendBaseFee(
+        uint256 _maxTendBaseFee
+    ) external onlyManagement {
+        maxTendBaseFee = _maxTendBaseFee;
     }
 
     /**
