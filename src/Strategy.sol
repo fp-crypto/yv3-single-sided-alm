@@ -138,7 +138,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             // We have a target idle, check if we need to rebalance
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
-                10000;
+                MAX_BPS;
 
             if (_totalIdle > targetIdleAmount) {
                 // Check if excess is above minAsset threshold
@@ -181,11 +181,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
             uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
-                10000;
+                MAX_BPS;
 
             // Calculate bounds using configurable buffer
             uint256 bufferAmount = (targetIdleAmount *
-                uint256(targetIdleBufferBps)) / 10000;
+                uint256(targetIdleBufferBps)) / MAX_BPS;
             uint256 upperBound = targetIdleAmount + bufferAmount;
             uint256 lowerBound = targetIdleAmount > bufferAmount
                 ? targetIdleAmount - bufferAmount
@@ -337,7 +337,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             uint256(pairedTokenDiscountBps); // Convert fee to bps
 
         // Apply discount: value * (10000 - totalDiscountBps) / 10000
-        value = (value * (10000 - totalDiscountBps)) / 10000;
+        value = (value * (MAX_BPS - totalDiscountBps)) / MAX_BPS;
     }
 
     /**
@@ -636,7 +636,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
             uint256 totalAssets = TokenizedStrategy.totalAssets();
-            targetIdleAmount = (totalAssets * _targetIdleAssetBps) / 10000;
+            targetIdleAmount = (totalAssets * _targetIdleAssetBps) / MAX_BPS;
 
             // Only deposit if above target idle amount
             if (assetBalance <= targetIdleAmount) return;
@@ -820,7 +820,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function setTargetIdleAssetBps(
         uint16 _targetIdleAssetBps
     ) external onlyManagement {
-        require(_targetIdleAssetBps <= 10000, "!bps"); // dev: Target idle asset cannot exceed 100% (10000 bps)
+        require(_targetIdleAssetBps <= MAX_BPS, "!bps"); // dev: Target idle asset cannot exceed 100% (10000 bps)
         targetIdleAssetBps = _targetIdleAssetBps;
     }
 
@@ -861,7 +861,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function setTargetIdleBufferBps(
         uint16 _targetIdleBufferBps
     ) external onlyManagement {
-        require(_targetIdleBufferBps <= 10000, "!bps"); // dev: Buffer cannot exceed 100%
+        require(_targetIdleBufferBps <= MAX_BPS, "!bps"); // dev: Buffer cannot exceed 100%
         targetIdleBufferBps = _targetIdleBufferBps;
     }
 
