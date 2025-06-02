@@ -52,6 +52,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /// @notice Buffer for target idle asset in basis points (e.g., 1000 = 10% buffer)
     uint16 public targetIdleBufferBps = 1000; // 10% default
 
+    /// @notice Additional discount applied to paired token valuations in basis points
+    uint16 public pairedTokenDiscountBps = 50; // 0.5% default
+
     /// @notice Maximum acceptable base fee for tends in gwei
     uint8 public maxTendBaseFeeGwei = 100;
 
@@ -320,6 +323,34 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint160 sqrtPriceX96
     ) internal view returns (uint256 value) {
         if (amountOfPairedToken == 0) return 0;
+
+        // Get raw value without discount
+        value = _valueOfPairedTokenInAssetRaw(
+            amountOfPairedToken,
+            sqrtPriceX96
+        );
+
+        // Apply discount for pool fee + additional discount
+        uint24 poolFee = IUniswapV3Pool(_POOL).fee(); // e.g., 3000 = 0.3%
+        uint256 totalDiscountBps = poolFee /
+            100 +
+            uint256(pairedTokenDiscountBps); // Convert fee to bps
+
+        // Apply discount: value * (10000 - totalDiscountBps) / 10000
+        value = (value * (10000 - totalDiscountBps)) / 10000;
+    }
+
+    /**
+     * @notice Calculates the raw value of the paired token without any discounts.
+     * @param amountOfPairedToken The amount of the paired token
+     * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool
+     * @return value The raw calculated value in terms of the strategy's asset
+     */
+    function _valueOfPairedTokenInAssetRaw(
+        uint256 amountOfPairedToken,
+        uint160 sqrtPriceX96
+    ) internal view returns (uint256 value) {
+        if (amountOfPairedToken == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
             // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
             value = FullMath.mulDiv(
@@ -343,7 +374,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param _sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool
      * @return _amountOfPairedToken The corresponding quantity of paired token
      */
-    function _convertAssetValueToPairedTokenQuantity(
+    function _assetValueToPairedAmount(
         uint256 _valueInAssetTerms,
         uint160 _sqrtPriceX96
     ) internal view returns (uint256 _amountOfPairedToken) {
@@ -461,7 +492,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                     // Convert maxSwapValue back to paired token amount
                     (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL)
                         .slot0();
-                    amountToSwap = _convertAssetValueToPairedTokenQuantity(
+                    amountToSwap = _assetValueToPairedAmount(
                         _maxSwapValue,
                         sqrtPriceX96
                     );
@@ -537,10 +568,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             // Have excess paired token
             uint256 excessPairedTokenValueInAsset = currentPairedTokenValueInAsset -
                     targetPairedTokenValueInAsset;
-            uint256 pairedTokenQuantityToSwap = _convertAssetValueToPairedTokenQuantity(
-                    excessPairedTokenValueInAsset,
-                    sqrtPriceX96
-                );
+            uint256 pairedTokenQuantityToSwap = _assetValueToPairedAmount(
+                excessPairedTokenValueInAsset,
+                sqrtPriceX96
+            );
             if (pairedTokenQuantityToSwap > pairedTokenBalance) {
                 pairedTokenQuantityToSwap = pairedTokenBalance;
             }
@@ -832,6 +863,18 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) external onlyManagement {
         require(_targetIdleBufferBps <= 10000, "!bps"); // dev: Buffer cannot exceed 100%
         targetIdleBufferBps = _targetIdleBufferBps;
+    }
+
+    /**
+     * @notice Sets the additional discount for paired token valuations
+     * @param _pairedTokenDiscountBps Discount in basis points (e.g., 50 = 0.5%)
+     * @dev Can only be called by management
+     */
+    function setPairedTokenDiscountBps(
+        uint16 _pairedTokenDiscountBps
+    ) external onlyManagement {
+        require(_pairedTokenDiscountBps <= 1000, "!discount"); // dev: Discount cannot exceed 10%
+        pairedTokenDiscountBps = _pairedTokenDiscountBps;
     }
 
     /**

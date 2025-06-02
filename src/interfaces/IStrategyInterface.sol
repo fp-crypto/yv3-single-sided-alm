@@ -24,6 +24,7 @@ interface IStrategyInterface is IBaseHealthCheck {
     // Management parameters
     function targetIdleAssetBps() external view returns (uint16);
     function targetIdleBufferBps() external view returns (uint16);
+    function pairedTokenDiscountBps() external view returns (uint16);
     function depositLimit() external view returns (uint256);
     function maxSwapValue() external view returns (uint256);
     function minAsset() external view returns (uint128);
@@ -38,6 +39,7 @@ interface IStrategyInterface is IBaseHealthCheck {
     function setDepositLimit(uint256 _depositLimit) external;
     function setTargetIdleAssetBps(uint16 _targetIdleAssetBps) external;
     function setTargetIdleBufferBps(uint16 _targetIdleBufferBps) external;
+    function setPairedTokenDiscountBps(uint16 _pairedTokenDiscountBps) external;
     function setMinAsset(uint128 _minAsset) external;
     function setMaxSwapValue(uint256 _maxSwapValue) external;
     function setUseAuctions(bool _useAuctions) external;

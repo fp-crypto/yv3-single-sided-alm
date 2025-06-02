@@ -295,4 +295,169 @@ contract PriceCalculationTests is Setup {
         vm.prank(keeper);
         strategy.tend(); // Should not do anything but shouldn't revert
     }
+
+    function test_pairedTokenDiscountValuation(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Airdrop paired token to strategy
+        uint256 pairedAmount = _amount / 2;
+
+        // Adjust for decimal differences
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
+        if (decimalDiff > 0) {
+            pairedAmount = pairedAmount / (10 ** uint256(decimalDiff));
+        } else if (decimalDiff < 0) {
+            pairedAmount = pairedAmount * (10 ** uint256(-decimalDiff));
+        }
+
+        if (pairedAmount == 0) pairedAmount = 1e6; // Minimum amount
+        airdrop(params.pairedAsset, address(strategy), pairedAmount);
+
+        // Get pool fee
+        address poolAddress = ISushiMultiPositionLiquidityManager(params.lp)
+            .pool();
+        uint24 poolFee = IUniswapV3Pool(poolAddress).fee();
+
+        // Test 1: Verify default discount
+        uint256 valuationWithDefaultDiscount = strategy.estimatedTotalAsset();
+
+        // Test 2: Set zero discount and compare
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(0);
+
+        uint256 valuationWithZeroDiscount = strategy.estimatedTotalAsset();
+
+        // Valuation with zero discount should be higher than with default discount
+        assertGt(
+            valuationWithZeroDiscount,
+            valuationWithDefaultDiscount,
+            "Zero discount should give higher valuation"
+        );
+
+        // Test 3: Set max discount (10%)
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(1000); // 10%
+
+        uint256 valuationWithMaxDiscount = strategy.estimatedTotalAsset();
+
+        // Valuation with max discount should be lower than default
+        assertLt(
+            valuationWithMaxDiscount,
+            valuationWithDefaultDiscount,
+            "Max discount should give lower valuation"
+        );
+
+        // Test 4: Verify the discount is being applied
+        // The valuation should be between zero discount and max discount
+        assertGt(
+            valuationWithZeroDiscount,
+            valuationWithDefaultDiscount,
+            "Default discount should reduce valuation"
+        );
+
+        assertGt(
+            valuationWithDefaultDiscount,
+            valuationWithMaxDiscount,
+            "Default discount should be less than max discount"
+        );
+
+        // Test 5: Verify discount calculation on paired token portion only
+        // Get the paired token balance and its raw value
+        uint256 pairedBalance = params.pairedAsset.balanceOf(address(strategy));
+
+        // Calculate expected discount = poolFee/100 + additionalDiscount
+        uint256 expectedDiscountBps = poolFee / 100 + 50;
+
+        // The difference between zero and default discount should approximately equal
+        // the discount applied to the paired token value
+        uint256 valueDifference = valuationWithZeroDiscount -
+            valuationWithDefaultDiscount;
+        uint256 expectedDifference = (valuationWithZeroDiscount *
+            expectedDiscountBps) / 10000;
+
+        // Use a percentage tolerance since we're only discounting the paired token portion
+        uint256 tolerance = valuationWithZeroDiscount / 100; // 1% tolerance
+        assertLe(
+            valueDifference,
+            expectedDifference + tolerance,
+            "Discount should be applied correctly"
+        );
+    }
+
+    function test_setPairedTokenDiscountBps_onlyManagement(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        vm.expectRevert("!management");
+        strategy.setPairedTokenDiscountBps(100);
+
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(100);
+        assertEq(strategy.pairedTokenDiscountBps(), 100, "discount updated");
+    }
+
+    function test_setPairedTokenDiscountBps_maxLimit(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Should revert if discount > 1000 bps (10%)
+        vm.prank(management);
+        vm.expectRevert("!discount");
+        strategy.setPairedTokenDiscountBps(1001);
+
+        // Should work at exactly 1000 bps
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(1000);
+        assertEq(strategy.pairedTokenDiscountBps(), 1000, "max discount set");
+    }
+
+    function test_lpValuationWithDiscount(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
+
+        // Deposit and create LP position
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Skip if no LP was created
+        if (ERC20(params.lp).balanceOf(address(strategy)) == 0) return;
+
+        // Test LP valuation with different discounts
+        uint256 lpValueDefault = strategy.lpVaultInAsset();
+
+        // Set zero discount
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(0);
+        uint256 lpValueNoDiscount = strategy.lpVaultInAsset();
+
+        // LP value should be higher without discount (or equal if LP has only asset)
+        assertGe(
+            lpValueNoDiscount,
+            lpValueDefault,
+            "LP value without discount should be >= default"
+        );
+
+        // Set high discount
+        vm.prank(management);
+        strategy.setPairedTokenDiscountBps(500); // 5%
+        uint256 lpValueHighDiscount = strategy.lpVaultInAsset();
+
+        // LP value should be lower with high discount (or equal if LP has only asset)
+        assertLe(
+            lpValueHighDiscount,
+            lpValueDefault,
+            "LP value with high discount should be <= default"
+        );
+    }
 }

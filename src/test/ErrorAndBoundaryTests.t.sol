@@ -816,7 +816,7 @@ contract ErrorAndBoundaryTests is Setup {
             "Should have paired token balance for rebalancing"
         );
 
-        // This should trigger the rebalancing logic that calls _convertAssetValueToPairedTokenQuantity
+        // This should trigger the rebalancing logic that calls _assetValueToPairedAmount
         // with _ASSET_IS_TOKEN_0 = false, hitting the else branch (line 278)
         vm.prank(keeper);
         strategy.tend();
@@ -894,7 +894,7 @@ contract ErrorAndBoundaryTests is Setup {
 
         // Force the rebalancing by calling tend
         // This should definitely trigger the excess paired token condition
-        // and call _convertAssetValueToPairedTokenQuantity with _ASSET_IS_TOKEN_0 = false
+        // and call _assetValueToPairedAmount with _ASSET_IS_TOKEN_0 = false
         vm.prank(keeper);
         strategy.tend();
 
