@@ -405,11 +405,6 @@ contract MaxSwapValueTests is Setup {
         IStrategyInterface strategy,
         uint256 _amount
     ) public {
-        // Skip the problematic strategy that causes external contract issues
-        if (address(strategy) == 0x104fBc016F4bb334D775a19E8A6510109AC63E00) {
-            return;
-        }
-
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
 
@@ -490,11 +485,6 @@ contract MaxSwapValueTests is Setup {
         IStrategyInterface strategy,
         uint256 _amount
     ) public {
-        // Skip the problematic strategy
-        if (address(strategy) == 0x104fBc016F4bb334D775a19E8A6510109AC63E00) {
-            return;
-        }
-
         TestParams memory params = _getTestParams(address(strategy));
         _amount = bound(
             _amount,

@@ -221,10 +221,6 @@ contract Setup is Test, IEvents {
     ) internal returns (TestParams memory) {
         vm.assume(_isFixtureStrategy(_strategy));
 
-        // Skip problematic strategies that are failing deposits
-        vm.assume(_strategy != 0xDDc10602782af652bB913f7bdE1fD82981Db7dd9); // WMATIC/USDC
-        vm.assume(_strategy != 0x7FdB3132Ff7D02d8B9e221c61cC895ce9a4bb773); // USDC/WPOL
-
         IStrategyInterface strategy = IStrategyInterface(_strategy);
         ISushiMultiPositionLiquidityManager lp = ISushiMultiPositionLiquidityManager(
                 strategy.STEER_LP()

@@ -1638,11 +1638,6 @@ contract ErrorAndBoundaryTests is Setup {
     function test_minAsset_withTargetIdleExcess(
         IStrategyInterface strategy
     ) public {
-        // Skip the problematic strategy that causes external contract issues
-        if (address(strategy) == 0x104fBc016F4bb334D775a19E8A6510109AC63E00) {
-            return;
-        }
-
         TestParams memory params = _getTestParams(address(strategy));
         uint256 amount = params.maxFuzzAmount;
 
