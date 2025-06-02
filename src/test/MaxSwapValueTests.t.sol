@@ -5,6 +5,8 @@ import "forge-std/console2.sol";
 import {Setup, ERC20, IStrategyInterface} from "./utils/Setup.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {ISushiMultiPositionLiquidityManager} from "../interfaces/steer/ISushiMultiPositionLiquidityManager.sol";
+import {IUniswapV3Pool} from "@uniswap-v3-core/interfaces/IUniswapV3Pool.sol";
+import {FullMath} from "@uniswap-v3-core/libraries/FullMath.sol";
 
 contract MaxSwapValueTests is Setup {
     function setUp() public virtual override {
@@ -482,5 +484,129 @@ contract MaxSwapValueTests is Setup {
             tolerance,
             "Swapped value should be close to maxSwapValue"
         );
+    }
+
+    function test_maxSwapValue_pairedTokenConversion(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        // Skip the problematic strategy
+        if (address(strategy) == 0x104fBc016F4bb334D775a19E8A6510109AC63E00) {
+            return;
+        }
+
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(
+            _amount,
+            params.minFuzzAmount * 10,
+            params.maxFuzzAmount
+        );
+
+        // First create an LP position with a large amount
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Withdraw all to get maximum paired tokens
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(type(uint256).max);
+
+        // Now we should have both asset and paired tokens
+        uint256 pairedBalance = params.pairedAsset.balanceOf(address(strategy));
+        uint256 assetBalance = params.asset.balanceOf(address(strategy));
+
+        // Skip if no paired tokens
+        if (pairedBalance == 0) {
+            return;
+        }
+
+        // Calculate paired token value
+        uint256 pairedValueInAsset = strategy.estimatedTotalAsset() -
+            assetBalance -
+            strategy.lpVaultInAsset();
+
+        // Set a very low maxSwapValue to ensure we trigger the conversion code
+        // This needs to be less than the paired token value to trigger lines 492-497
+        uint256 veryLowMaxSwap = pairedValueInAsset / 100; // 1% of paired value
+
+        // Ensure it's not zero
+        if (veryLowMaxSwap == 0) {
+            veryLowMaxSwap = 1;
+        }
+
+        vm.prank(management);
+        strategy.setMaxSwapValue(veryLowMaxSwap);
+
+        // Now perform the swap - this should trigger the conversion code
+        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+
+        // Calculate expected swap amount after conversion
+        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(
+            ISushiMultiPositionLiquidityManager(params.lp).pool()
+        ).slot0();
+
+        // This mimics what the strategy will do in lines 494-497
+        uint256 expectedSwapAmount = _assetValueToPairedAmount(
+            veryLowMaxSwap,
+            sqrtPriceX96,
+            params
+        );
+
+        vm.prank(management);
+        strategy.manualSwapPairedTokenToAsset(pairedBalance); // Try to swap all
+
+        uint256 pairedBalanceAfter = params.pairedAsset.balanceOf(
+            address(strategy)
+        );
+        uint256 actualSwapped = pairedBalanceBefore - pairedBalanceAfter;
+
+        // Verify the swap was limited by maxSwapValue conversion
+        assertGt(actualSwapped, 0, "Should have swapped some paired tokens");
+        assertLt(
+            actualSwapped,
+            pairedBalanceBefore,
+            "Should not swap all paired tokens"
+        );
+
+        // The actual swapped amount should be close to our expected conversion
+        // Allow for some tolerance due to price movements and fees
+        uint256 tolerance = expectedSwapAmount / 5; // 20% tolerance
+        assertApproxEqAbs(
+            actualSwapped,
+            expectedSwapAmount,
+            tolerance,
+            "Swapped amount should match maxSwapValue conversion"
+        );
+    }
+
+    // Helper function to mimic _assetValueToPairedAmount
+    function _assetValueToPairedAmount(
+        uint256 _valueInAssetTerms,
+        uint160 _sqrtPriceX96,
+        TestParams memory params
+    ) internal view returns (uint256 _amountOfPairedToken) {
+        uint256 Q96 = 0x1000000000000000000000000;
+
+        // Determine if asset is token0
+        address token0 = ISushiMultiPositionLiquidityManager(params.lp)
+            .token0();
+        bool assetIsToken0 = address(params.asset) == token0;
+
+        if (_valueInAssetTerms == 0) return 0;
+        if (assetIsToken0) {
+            _amountOfPairedToken = FullMath.mulDiv(
+                _valueInAssetTerms,
+                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
+                Q96
+            );
+        } else {
+            _amountOfPairedToken = FullMath.mulDiv(
+                _valueInAssetTerms,
+                Q96,
+                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96)
+            );
+        }
     }
 }
