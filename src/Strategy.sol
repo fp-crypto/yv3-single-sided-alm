@@ -125,7 +125,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         override
         returns (uint256 _totalAssets)
     {
-        // TODO: position adjustments?
         _totalAssets = estimatedTotalAsset();
     }
 

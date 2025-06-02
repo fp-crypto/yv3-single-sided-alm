@@ -331,4 +331,53 @@ contract ManagementTests is Setup {
             _depositLimit - _currentDeposit
         );
     }
+
+    function test_setTargetIdleBufferBps_various(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test setting valid values
+        vm.startPrank(management);
+
+        // Test 5% buffer
+        strategy.setTargetIdleBufferBps(500);
+        assertEq(strategy.targetIdleBufferBps(), 500, "!500 bps");
+
+        // Test 20% buffer
+        strategy.setTargetIdleBufferBps(2000);
+        assertEq(strategy.targetIdleBufferBps(), 2000, "!2000 bps");
+
+        // Test 0% buffer
+        strategy.setTargetIdleBufferBps(0);
+        assertEq(strategy.targetIdleBufferBps(), 0, "!0 bps");
+
+        // Test maximum 100% buffer
+        strategy.setTargetIdleBufferBps(10000);
+        assertEq(strategy.targetIdleBufferBps(), 10000, "!10000 bps");
+
+        vm.stopPrank();
+    }
+
+    function test_setTargetIdleBufferBps_exceedsMax(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test invalid value (over 100%)
+        vm.prank(management);
+        vm.expectRevert();
+        strategy.setTargetIdleBufferBps(10001);
+    }
+
+    function test_setTargetIdleBufferBps_onlyManagement(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+
+        // Test access control
+        vm.prank(user);
+        vm.expectRevert("!management");
+        strategy.setTargetIdleBufferBps(1000);
+    }
 }

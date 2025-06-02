@@ -312,4 +312,55 @@ contract TendTriggerTests is Setup {
         strategy.setMinAsset(1e18);
         assertEq(strategy.minAsset(), 1e18, "minAsset updated");
     }
+
+    function test_tend_withTargetIdleDeficit(
+        IStrategyInterface strategy,
+        uint256 _amount
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        _amount = bound(
+            _amount,
+            params.minFuzzAmount * 10,
+            params.maxFuzzAmount
+        );
+
+        // Setup: Deposit and tend to get everything into LP
+        mintAndDepositIntoStrategy(strategy, user, _amount);
+        vm.prank(keeper);
+        strategy.tend();
+
+        // Verify most assets are in LP
+        uint256 lpBalanceInitial = ERC20(params.lp).balanceOf(
+            address(strategy)
+        );
+        assertGt(lpBalanceInitial, 0, "Should have LP tokens");
+
+        // Set a high target idle (50%)
+        vm.prank(management);
+        strategy.setTargetIdleAssetBps(5000);
+
+        // Skip time to allow another tend
+        skip(strategy.minTendWait() + 1);
+
+        // Tend should trigger because idle is below target
+        (bool shouldTrigger, ) = strategy.tendTrigger();
+        assertTrue(shouldTrigger, "Should trigger tend with idle deficit");
+
+        // Now tend should withdraw from LP to meet target idle
+        uint256 lpBefore = ERC20(params.lp).balanceOf(address(strategy));
+        vm.prank(keeper);
+        strategy.tend();
+
+        uint256 lpAfter = ERC20(params.lp).balanceOf(address(strategy));
+        uint256 idleAfter = params.asset.balanceOf(address(strategy));
+
+        // Verify LP decreased and idle increased
+        assertLt(lpAfter, lpBefore, "LP should decrease");
+        assertGt(idleAfter, 0, "Should have idle assets");
+
+        // Verify idle is approximately target (50% of total assets)
+        uint256 targetIdle = (strategy.totalAssets() * 5000) / 10000;
+        // Allow for some deviation due to swaps and price movements
+        assertApproxEqRel(idleAfter, targetIdle, 0.2e18, "Idle should be ~50%");
+    }
 }
