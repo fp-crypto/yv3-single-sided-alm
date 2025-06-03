@@ -324,4 +324,33 @@ contract AuctionTests is Setup {
             // Expected to fail with real Merkl contract
         }
     }
+
+    function test_kickAuction_failsWhenKickReturnsZero(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        
+        // Setup auction
+        mockAuction = new MockAuctionFull(
+            address(params.asset),
+            address(strategy)
+        );
+        
+        vm.prank(management);
+        strategy.setAuction(address(mockAuction));
+        
+        vm.prank(management);
+        strategy.setUseAuctions(true);
+        
+        // Give strategy some reward tokens
+        rewardToken.mint(address(strategy), 1000e18);
+        
+        // Set kick to return 0, which should cause kickAuction to revert
+        mockAuction.setKickReturnValue(0);
+        
+        // Attempt to kick auction should revert with "!kick"
+        vm.expectRevert("!kick");
+        vm.prank(management);
+        strategy.kickAuction(address(rewardToken));
+    }
 }

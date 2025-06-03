@@ -181,7 +181,7 @@ contract PriceCalculationTests is Setup {
         assertEq(availableDeposit, _limit, "Should equal custom limit");
     }
 
-    function test_calculateAmountToSwap_emptyLp(
+    function test_tend_initialDeposit_createsLp(
         IStrategyInterface strategy,
         uint256 _amount
     ) public {
@@ -191,7 +191,8 @@ contract PriceCalculationTests is Setup {
         // Give strategy some assets but don't create LP position
         airdrop(params.asset, address(strategy), _amount);
 
-        // When LP is empty, should aim for 50/50 split in deposit
+        // When strategy has no LP position, tend should create one
+        // Note: This assumes the Steer LP is not empty (strategy won't be first depositor)
         vm.prank(keeper);
         strategy.tend();
 

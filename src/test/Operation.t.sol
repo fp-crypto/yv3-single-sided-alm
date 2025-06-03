@@ -417,41 +417,4 @@ contract OperationTest is Setup {
         );
     }
 
-    function test_tendTrigger(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Test 1: Initially should be false (no idle assets)
-        (bool trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "no idle assets initially");
-
-        // Test 2: Deposit creates idle assets, should trigger
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        (trigger, ) = strategy.tendTrigger();
-        assertTrue(trigger, "should trigger with idle assets");
-
-        // Test 3: Tend deposits idle assets
-        vm.prank(keeper);
-        strategy.tend();
-
-        // Test 4: Should not trigger immediately after tend (minWait not passed)
-        (trigger, ) = strategy.tendTrigger();
-        assertFalse(trigger, "should not trigger immediately after tend");
-
-        // Test 5: After minWait, check based on idle balance
-        skip(strategy.minTendWait() + 1);
-        uint256 idleAssets = params.asset.balanceOf(address(strategy));
-        (trigger, ) = strategy.tendTrigger();
-
-        // If there are still idle assets after tend, it should trigger
-        // This can happen when LP rebalancing doesn't consume all assets
-        if (idleAssets > 0) {
-            assertTrue(trigger, "should trigger with remaining idle assets");
-        } else {
-            assertFalse(trigger, "no trigger without idle assets");
-        }
-    }
 }

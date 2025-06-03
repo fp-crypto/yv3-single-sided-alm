@@ -494,6 +494,59 @@ contract MaxSwapValueTests is Setup {
         );
     }
 
+    function test_maxSwapValue_zeroWithMixedTokens(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        
+        // Set maxSwapValue to 0
+        vm.prank(management);
+        strategy.setMaxSwapValue(0);
+        
+        // Give strategy both tokens (not just one)
+        uint256 assetAmount = params.minFuzzAmount * 2;
+        uint256 pairedAmount = params.minFuzzAmount;
+        
+        // Adjust paired amount for decimal differences
+        if (params.assetDecimals > params.pairedAssetDecimals) {
+            pairedAmount = pairedAmount / (10 ** (params.assetDecimals - params.pairedAssetDecimals));
+        } else if (params.pairedAssetDecimals > params.assetDecimals) {
+            pairedAmount = pairedAmount * (10 ** (params.pairedAssetDecimals - params.assetDecimals));
+        }
+        
+        airdrop(params.asset, address(strategy), assetAmount);
+        airdrop(params.pairedAsset, address(strategy), pairedAmount);
+        
+        uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
+        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(address(strategy));
+        
+        // Tend should not perform any swaps
+        vm.prank(keeper);
+        strategy.tend();
+        
+        uint256 assetBalanceAfter = params.asset.balanceOf(address(strategy));
+        uint256 pairedBalanceAfter = params.pairedAsset.balanceOf(address(strategy));
+        
+        // No swaps should occur
+        assertEq(
+            assetBalanceAfter,
+            assetBalanceBefore,
+            "Asset balance should remain unchanged"
+        );
+        assertEq(
+            pairedBalanceAfter,
+            pairedBalanceBefore,
+            "Paired token balance should remain unchanged"
+        );
+        
+        // No LP position should be created since we can't swap to balance
+        assertEq(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "Should have no LP position"
+        );
+    }
+
     function test_maxSwapValue_pairedTokenConversion(
         IStrategyInterface strategy,
         uint256 _amount

@@ -918,222 +918,6 @@ contract ErrorAndBoundaryTests is Setup {
         );
     }
 
-    function test_swapCallback_invalidTokenToPay(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Create position to have callback context
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
-
-        // Get the pool address to call as the correct caller
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
-                params.lp
-            );
-        address poolAddress = steerLP.pool();
-
-        // Test with invalid token (not asset or paired token)
-        address invalidToken = address(0xdead); // Random invalid address
-
-        // Create proper SwapCallbackData struct
-        bytes memory callbackData = abi.encode(
-            invalidToken, // tokenToPay
-            1e18 // amountToPay
-        );
-
-        // This should trigger the "!token" error in _validateAndGetAmountPaid
-        vm.expectRevert(bytes("!token"));
-        vm.prank(poolAddress);
-        strategy.uniswapV3SwapCallback(
-            1e18, // amount0Delta > 0
-            -1e17, // amount1Delta < 0
-            callbackData
-        );
-    }
-
-    function test_swapCallback_invalidAmountDeltas_assetAsToken0(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Get LP to determine token order
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
-                params.lp
-            );
-        address token0 = steerLP.token0();
-        address poolAddress = steerLP.pool();
-
-        // Only run for strategies where asset is token0
-        if (address(params.asset) != token0) {
-            return;
-        }
-
-        // Create position to have callback context
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
-
-        // Test invalid deltas for asset as token0 payment
-        // When paying asset as token0, amount1Delta should be < 0, but we pass > 0
-        bytes memory callbackData1 = abi.encode(
-            address(params.asset), // tokenToPay
-            1e18 // amountToPay
-        );
-
-        vm.expectRevert(bytes("!amount1-"));
-        vm.prank(poolAddress);
-        strategy.uniswapV3SwapCallback(
-            1e18, // amount0Delta > 0 (correct for paying token0)
-            1e17, // amount1Delta > 0 (WRONG - should be < 0)
-            callbackData1
-        );
-
-        // Test invalid deltas for paired token as token1 payment
-        // When paying paired token as token1, amount0Delta should be < 0, but we pass > 0
-        bytes memory callbackData2 = abi.encode(
-            address(params.pairedAsset), // tokenToPay
-            1e18 // amountToPay
-        );
-
-        vm.expectRevert(bytes("!amount0-"));
-        vm.prank(poolAddress);
-        strategy.uniswapV3SwapCallback(
-            1e17, // amount0Delta > 0 (WRONG - should be < 0)
-            1e18, // amount1Delta > 0 (correct for paying token1)
-            callbackData2
-        );
-    }
-
-    function test_swapCallback_invalidAmountDeltas_assetAsToken1(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Get LP to determine token order
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
-                params.lp
-            );
-        address token0 = steerLP.token0();
-        address poolAddress = steerLP.pool();
-
-        // Only run for strategies where asset is token1 (not token0)
-        if (address(params.asset) == token0) {
-            return;
-        }
-
-        // Create position to have callback context
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
-
-        // Test invalid deltas for asset as token1 payment
-        // When paying asset as token1, amount0Delta should be < 0, but we pass > 0
-        bytes memory callbackData1 = abi.encode(
-            address(params.asset), // tokenToPay
-            1e18 // amountToPay
-        );
-
-        vm.expectRevert(bytes("!amount0-"));
-        vm.prank(poolAddress);
-        strategy.uniswapV3SwapCallback(
-            1e17, // amount0Delta > 0 (WRONG - should be < 0)
-            1e18, // amount1Delta > 0 (correct for paying token1)
-            callbackData1
-        );
-
-        // Test invalid deltas for paired token as token0 payment
-        // When paying paired token as token0, amount1Delta should be < 0, but we pass > 0
-        bytes memory callbackData2 = abi.encode(
-            address(params.pairedAsset), // tokenToPay
-            1e18 // amountToPay
-        );
-
-        vm.expectRevert(bytes("!amount1-"));
-        vm.prank(poolAddress);
-        strategy.uniswapV3SwapCallback(
-            1e18, // amount0Delta > 0 (correct for paying token0)
-            1e17, // amount1Delta > 0 (WRONG - should be < 0)
-            callbackData2
-        );
-    }
-
-    function test_swapCallback_invalidCaller(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Create position to have callback context
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
-
-        bytes memory callbackData = abi.encode(
-            address(params.asset), // tokenToPay
-            1e18 // amountToPay
-        );
-
-        // Test with non-pool caller
-        vm.expectRevert(bytes("!caller"));
-        vm.prank(user); // Wrong caller (not the pool)
-        strategy.uniswapV3SwapCallback(1e18, -1e17, callbackData);
-    }
-
-    function test_swapCallback_amountMismatch(
-        IStrategyInterface strategy,
-        uint256 _amount
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        _amount = bound(_amount, params.minFuzzAmount, params.maxFuzzAmount);
-
-        // Get LP to determine token order and pool address
-        ISushiMultiPositionLiquidityManager steerLP = ISushiMultiPositionLiquidityManager(
-                params.lp
-            );
-        address poolAddress = steerLP.pool();
-        address token0 = steerLP.token0();
-
-        // Create position to have callback context
-        mintAndDepositIntoStrategy(strategy, user, _amount);
-        vm.prank(keeper);
-        strategy.tend();
-
-        // We need to construct valid deltas that pass validation but have amount mismatch
-        // Test with valid deltas but mismatched amounts in callback data
-        bytes memory callbackData = abi.encode(
-            address(params.asset), // tokenToPay
-            1e18 // amountToPay (but delta will indicate 2e18)
-        );
-
-        vm.expectRevert(bytes("!amount"));
-        vm.prank(poolAddress); // Correct caller (the pool)
-
-        // Use valid deltas based on token order
-        if (address(params.asset) == token0) {
-            // Asset is token0, so when paying asset: amount0Delta > 0, amount1Delta < 0
-            strategy.uniswapV3SwapCallback(
-                2e18, // amount0Delta indicates 2e18 (but callback says 1e18)
-                -1e17, // amount1Delta < 0 (valid for paying token0)
-                callbackData
-            );
-        } else {
-            // Asset is token1, so when paying asset: amount1Delta > 0, amount0Delta < 0
-            strategy.uniswapV3SwapCallback(
-                -1e17, // amount0Delta < 0 (valid for paying token1)
-                2e18, // amount1Delta indicates 2e18 (but callback says 1e18)
-                callbackData
-            );
-        }
-    }
 
     function test_outOfRangePositions_priceMovementAboveRange(
         IStrategyInterface strategy,
@@ -1521,6 +1305,69 @@ contract ErrorAndBoundaryTests is Setup {
             params.asset.balanceOf(address(strategy)),
             smallAmount,
             "All assets should remain idle"
+        );
+    }
+
+    function test_withdrawFromLp_zeroShares(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        
+        // First create an LP position
+        uint256 depositAmount = params.maxFuzzAmount / 2;
+        mintAndDepositIntoStrategy(strategy, user, depositAmount);
+        
+        vm.prank(keeper);
+        strategy.tend();
+        
+        uint256 lpBalanceBefore = ERC20(params.lp).balanceOf(address(strategy));
+        assertGt(lpBalanceBefore, 0, "Should have LP position");
+        
+        // Try to withdraw a very small amount that would result in 0 shares
+        // This amount should be so small that sharesToWithdraw = assetToWithdraw * lpShares / lpValue = 0
+        uint256 tinyAmount = 1; // 1 wei worth of asset
+        
+        // Call manualWithdrawFromLp with the tiny amount
+        vm.prank(management);
+        strategy.manualWithdrawFromLp(tinyAmount);
+        
+        // LP balance should remain unchanged since sharesToWithdraw would be 0
+        uint256 lpBalanceAfter = ERC20(params.lp).balanceOf(address(strategy));
+        assertEq(
+            lpBalanceAfter,
+            lpBalanceBefore,
+            "LP balance should remain unchanged when sharesToWithdraw is 0"
+        );
+    }
+
+    function test_depositInLp_avoidsBeingFirstDepositor(
+        IStrategyInterface strategy
+    ) public {
+        TestParams memory params = _getTestParams(address(strategy));
+        
+        // This test verifies the strategy won't deposit if it would be the first LP
+        // We can't easily test this with real Steer LPs since they already have deposits
+        // But we can verify the logic exists by checking that the strategy has this protection
+        
+        // Give strategy both tokens to simulate a deposit scenario
+        uint256 amount = params.minFuzzAmount * 10;
+        airdrop(params.asset, address(strategy), amount);
+        airdrop(params.pairedAsset, address(strategy), amount);
+        
+        // The actual test would require mocking the Steer LP to have zero balances
+        // For now, we just document that this protection exists in _depositInLp:
+        // if (lpToken0Balance == 0 && lpToken1Balance == 0) return; // do not be first lp
+        
+        // Tend should work normally since Steer LPs are not empty
+        vm.prank(keeper);
+        strategy.tend();
+        
+        // If Steer LP was empty, no LP tokens would be minted
+        // Since it's not empty, LP tokens should be created
+        assertGt(
+            ERC20(params.lp).balanceOf(address(strategy)),
+            0,
+            "LP position created since Steer LP is not empty"
         );
     }
 

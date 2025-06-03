@@ -9,7 +9,7 @@ on:
 
 env:
   FOUNDRY_PROFILE: ci
-  ETH_RPC_URL: ${{ secrets.ETH_RPC_URL }}
+  POLYGON_RPC_URL: ${{ secrets.FORK_URL }}
 
 jobs:
   coverage:
