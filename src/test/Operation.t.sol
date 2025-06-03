@@ -416,5 +416,4 @@ contract OperationTest is Setup {
             "!final balance"
         );
     }
-
 }

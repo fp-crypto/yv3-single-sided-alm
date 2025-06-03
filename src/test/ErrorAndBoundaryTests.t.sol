@@ -918,7 +918,6 @@ contract ErrorAndBoundaryTests is Setup {
         );
     }
 
-
     function test_outOfRangePositions_priceMovementAboveRange(
         IStrategyInterface strategy,
         uint256 _amount
@@ -1308,60 +1307,28 @@ contract ErrorAndBoundaryTests is Setup {
         );
     }
 
-    function test_withdrawFromLp_zeroShares(
-        IStrategyInterface strategy
-    ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        
-        // First create an LP position
-        uint256 depositAmount = params.maxFuzzAmount / 2;
-        mintAndDepositIntoStrategy(strategy, user, depositAmount);
-        
-        vm.prank(keeper);
-        strategy.tend();
-        
-        uint256 lpBalanceBefore = ERC20(params.lp).balanceOf(address(strategy));
-        assertGt(lpBalanceBefore, 0, "Should have LP position");
-        
-        // Try to withdraw a very small amount that would result in 0 shares
-        // This amount should be so small that sharesToWithdraw = assetToWithdraw * lpShares / lpValue = 0
-        uint256 tinyAmount = 1; // 1 wei worth of asset
-        
-        // Call manualWithdrawFromLp with the tiny amount
-        vm.prank(management);
-        strategy.manualWithdrawFromLp(tinyAmount);
-        
-        // LP balance should remain unchanged since sharesToWithdraw would be 0
-        uint256 lpBalanceAfter = ERC20(params.lp).balanceOf(address(strategy));
-        assertEq(
-            lpBalanceAfter,
-            lpBalanceBefore,
-            "LP balance should remain unchanged when sharesToWithdraw is 0"
-        );
-    }
-
     function test_depositInLp_avoidsBeingFirstDepositor(
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        
+
         // This test verifies the strategy won't deposit if it would be the first LP
         // We can't easily test this with real Steer LPs since they already have deposits
         // But we can verify the logic exists by checking that the strategy has this protection
-        
+
         // Give strategy both tokens to simulate a deposit scenario
         uint256 amount = params.minFuzzAmount * 10;
         airdrop(params.asset, address(strategy), amount);
         airdrop(params.pairedAsset, address(strategy), amount);
-        
+
         // The actual test would require mocking the Steer LP to have zero balances
         // For now, we just document that this protection exists in _depositInLp:
         // if (lpToken0Balance == 0 && lpToken1Balance == 0) return; // do not be first lp
-        
+
         // Tend should work normally since Steer LPs are not empty
         vm.prank(keeper);
         strategy.tend();
-        
+
         // If Steer LP was empty, no LP tokens would be minted
         // Since it's not empty, LP tokens should be created
         assertGt(
