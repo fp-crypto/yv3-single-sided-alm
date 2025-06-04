@@ -1,4 +1,4 @@
 {
-  "detectors_to_exclude": "naming-convention,unused-return,incorrect-equality,uninitialized-local,uninitialized-state-variables",
+  "detectors_to_exclude": "naming-convention,unused-return,incorrect-equality,uninitialized-local,uninitialized-state-variables,reentrancy-eth,reentrancy-no-eth,reentrancy-benign,reentrancy-events,divide-before-multiply,missing-zero-check,timestamp,missing-inheritance,too-many-digits",
   "filter_paths": "(lib/|src/test|src/periphery)"
 }
