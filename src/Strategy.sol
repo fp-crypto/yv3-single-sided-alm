@@ -33,8 +33,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     address private immutable _POOL;
     address private immutable _PAIRED_TOKEN;
     bool private immutable _ASSET_IS_TOKEN_0;
-    uint256 private immutable _ASSET_DECIMALS;
-    uint256 private immutable _PAIRED_TOKEN_DECIMALS;
 
     /*//////////////////////////////////////////////////////////////
                           STATE VARIABLES
@@ -101,8 +99,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             require(address(asset) == _token1, "!asset");
             _PAIRED_TOKEN = _token0;
         }
-        _ASSET_DECIMALS = asset.decimals();
-        _PAIRED_TOKEN_DECIMALS = ERC20(_PAIRED_TOKEN).decimals();
     }
 
     /*//////////////////////////////////////////////////////////////
