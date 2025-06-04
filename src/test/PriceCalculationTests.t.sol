@@ -14,7 +14,7 @@ contract PriceCalculationTests is Setup {
     function test_estimatedTotalAsset_zeroBalances(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Should return 0 when everything is empty
         assertEq(strategy.estimatedTotalAsset(), 0);
@@ -79,7 +79,7 @@ contract PriceCalculationTests is Setup {
     function test_lpVaultInAsset_noLpShares(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Should return 0 when no LP shares
         assertEq(strategy.lpVaultInAsset(), 0);
@@ -155,7 +155,7 @@ contract PriceCalculationTests is Setup {
     function test_availableDepositLimit_noLimit(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Default deposit limit should be max uint256
         uint256 availableDeposit = strategy.availableDepositLimit(user);
@@ -285,7 +285,7 @@ contract PriceCalculationTests is Setup {
     }
 
     function test_zeroAmountHandling(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // All calculations should handle zero amounts gracefully
         assertEq(strategy.estimatedTotalAsset(), 0);
@@ -369,7 +369,7 @@ contract PriceCalculationTests is Setup {
 
         // Test 5: Verify discount calculation on paired token portion only
         // Get the paired token balance and its raw value
-        uint256 pairedBalance = params.pairedAsset.balanceOf(address(strategy));
+        params.pairedAsset.balanceOf(address(strategy));
 
         // Calculate expected discount = poolFee/100 + additionalDiscount
         uint256 expectedDiscountBps = poolFee / 100 + 50;
@@ -393,7 +393,7 @@ contract PriceCalculationTests is Setup {
     function test_setPairedTokenDiscountBps_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.expectRevert("!management");
         strategy.setPairedTokenDiscountBps(100);
@@ -406,7 +406,7 @@ contract PriceCalculationTests is Setup {
     function test_setPairedTokenDiscountBps_maxLimit(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Should revert if discount > 1000 bps (10%)
         vm.prank(management);

@@ -16,7 +16,6 @@ contract CallbackTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
 
         bytes memory callbackData = abi.encode(address(asset), 1000);
 
@@ -28,8 +27,6 @@ contract CallbackTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
 
         bytes memory callbackData = abi.encode(
@@ -47,7 +44,6 @@ contract CallbackTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token0 = ISushiMultiPositionLiquidityManager(params.lp)
             .token0();
@@ -73,7 +69,6 @@ contract CallbackTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token0 = ISushiMultiPositionLiquidityManager(params.lp)
             .token0();
@@ -94,7 +89,6 @@ contract CallbackTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token1 = ISushiMultiPositionLiquidityManager(params.lp)
             .token1();
@@ -114,7 +108,6 @@ contract CallbackTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        ERC20 asset = params.asset;
         ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token0 = ISushiMultiPositionLiquidityManager(params.lp)
@@ -135,7 +128,6 @@ contract CallbackTests is Setup {
         IStrategyInterface strategy
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        ERC20 asset = params.asset;
         ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token1 = ISushiMultiPositionLiquidityManager(params.lp)
@@ -158,7 +150,6 @@ contract CallbackTests is Setup {
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
         ERC20 asset = params.asset;
-        ERC20 pairedAsset = params.pairedAsset;
         _amount = bound(
             _amount,
             params.minFuzzAmount,
@@ -204,7 +195,6 @@ contract CallbackTests is Setup {
         uint256 _amount
     ) public {
         TestParams memory params = _getTestParams(address(strategy));
-        ERC20 asset = params.asset;
         ERC20 pairedAsset = params.pairedAsset;
         address pool = ISushiMultiPositionLiquidityManager(params.lp).pool();
         address token0 = ISushiMultiPositionLiquidityManager(params.lp)

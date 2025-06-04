@@ -206,7 +206,7 @@ contract Setup is Test, IEvents {
         vm.stopPrank();
     }
 
-    function fixtureStrategy() public returns (address[] memory) {
+    function fixtureStrategy() public view returns (address[] memory) {
         return strategies.values();
     }
 
@@ -218,7 +218,7 @@ contract Setup is Test, IEvents {
 
     function _getTestParams(
         address _strategy
-    ) internal returns (TestParams memory) {
+    ) internal view returns (TestParams memory) {
         vm.assume(_isFixtureStrategy(_strategy));
 
         IStrategyInterface strategy = IStrategyInterface(_strategy);

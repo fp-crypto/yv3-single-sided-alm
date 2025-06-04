@@ -181,8 +181,7 @@ contract ErrorAndBoundaryTests_OutOfRange is Setup {
         address poolAddress = steerLP.pool();
 
         // Get current state and positions
-        (, int24 currentTickBefore, , , , , ) = IUniswapV3Pool(poolAddress)
-            .slot0();
+        IUniswapV3Pool(poolAddress).slot0();
         (int24[] memory lowerTicks, int24[] memory upperTicks, ) = steerLP
             .getPositions();
 
@@ -239,8 +238,7 @@ contract ErrorAndBoundaryTests_OutOfRange is Setup {
         IUniswapV3Pool pool = IUniswapV3Pool(poolAddress);
 
         // Get current state
-        (uint160 currentSqrtPriceX96, int24 currentTick, , , , , ) = pool
-            .slot0();
+        (uint160 currentSqrtPriceX96, , , , , , ) = pool.slot0();
 
         // Calculate target sqrtPriceX96 based on target tick
         uint160 targetSqrtPriceX96 = TickMath.getSqrtRatioAtTick(targetTick);
@@ -317,7 +315,7 @@ contract ErrorAndBoundaryTests_OutOfRange is Setup {
     function uniswapV3SwapCallback(
         int256 amount0Delta,
         int256 amount1Delta,
-        bytes calldata data
+        bytes calldata /* data */
     ) external {
         // Simple callback for test swaps
         if (amount0Delta > 0) {

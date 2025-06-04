@@ -16,7 +16,7 @@ contract MaxSwapValueTests is Setup {
     function test_maxSwapValue_defaultValue(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Test that default maxSwapValue is type(uint256).max
         assertEq(
@@ -29,7 +29,7 @@ contract MaxSwapValueTests is Setup {
     function test_setMaxSwapValue_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Test that only management can set maxSwapValue
         vm.expectRevert("!management");
@@ -72,11 +72,7 @@ contract MaxSwapValueTests is Setup {
         // Deposit funds
         mintAndDepositIntoStrategy(strategy, user, _depositAmount);
 
-        // Get initial balances
-        uint256 assetBalanceBefore = params.asset.balanceOf(address(strategy));
-        uint256 pairedBalanceBefore = params.pairedAsset.balanceOf(
-            address(strategy)
-        );
+        // Get initial balances for logging purposes
 
         // Get pool address from strategy
         address steerLp = strategy.STEER_LP();
@@ -197,7 +193,7 @@ contract MaxSwapValueTests is Setup {
             uint256 pairedBalanceAfter = params.pairedAsset.balanceOf(
                 address(strategy)
             );
-            uint256 pairedSwapped = pairedBalanceBefore > pairedBalanceAfter
+            pairedBalanceBefore > pairedBalanceAfter
                 ? pairedBalanceBefore - pairedBalanceAfter
                 : 0;
 
@@ -236,7 +232,7 @@ contract MaxSwapValueTests is Setup {
         // Deposit funds
         mintAndDepositIntoStrategy(strategy, user, _amount);
 
-        uint256 totalAssetBefore = params.asset.balanceOf(address(strategy));
+        params.asset.balanceOf(address(strategy));
 
         // Get pool info for event observation
         address steerLp = strategy.STEER_LP();

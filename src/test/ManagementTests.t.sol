@@ -33,7 +33,7 @@ contract MockAuction {
         return availableValue;
     }
 
-    function kick(address) external returns (uint256) {
+    function kick(address) external pure returns (uint256) {
         return 1000;
     }
 }
@@ -46,8 +46,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleAssetBps_exceedsMax(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
-        ERC20 asset = params.asset;
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         vm.expectRevert(bytes("!bps"));
@@ -57,7 +56,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleAssetBps_maxValue(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         strategy.setTargetIdleAssetBps(10000); // Exactly 10000 should work
@@ -68,7 +67,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleAssetBps_zero(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         strategy.setTargetIdleAssetBps(0);
@@ -79,7 +78,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleAssetBps_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -90,7 +89,7 @@ contract ManagementTests is Setup {
         IStrategyInterface strategy,
         uint256 _limit
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
         _limit = bound(_limit, 0, type(uint256).max);
 
         vm.prank(management);
@@ -102,7 +101,7 @@ contract ManagementTests is Setup {
     function test_setDepositLimit_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -157,7 +156,7 @@ contract ManagementTests is Setup {
     }
 
     function test_setAuction_setToZero(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         strategy.setAuction(address(0));
@@ -168,7 +167,7 @@ contract ManagementTests is Setup {
     function test_setAuction_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -176,7 +175,7 @@ contract ManagementTests is Setup {
     }
 
     function test_setUseAuctions_toggle(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         bool initialValue = strategy.useAuctions();
 
@@ -189,7 +188,7 @@ contract ManagementTests is Setup {
     function test_setUseAuctions_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -199,7 +198,7 @@ contract ManagementTests is Setup {
     function test_manualSwapPairedTokenToAsset_zeroAmount(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         vm.expectRevert("!amount");
@@ -255,7 +254,7 @@ contract ManagementTests is Setup {
     function test_manualSwapPairedTokenToAsset_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -265,7 +264,7 @@ contract ManagementTests is Setup {
     function test_manualWithdrawFromLp_zeroAmount(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(management);
         vm.expectRevert("!amount");
@@ -275,7 +274,7 @@ contract ManagementTests is Setup {
     function test_manualWithdrawFromLp_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -335,7 +334,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleBufferBps_various(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Test setting valid values
         vm.startPrank(management);
@@ -362,7 +361,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleBufferBps_exceedsMax(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Test invalid value (over 100%)
         vm.prank(management);
@@ -373,7 +372,7 @@ contract ManagementTests is Setup {
     function test_setTargetIdleBufferBps_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Test access control
         vm.prank(user);

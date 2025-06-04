@@ -118,6 +118,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     // @inheritdoc BaseStrategy
     function _harvestAndReport()
         internal
+        view
         override
         returns (uint256 _totalAssets)
     {

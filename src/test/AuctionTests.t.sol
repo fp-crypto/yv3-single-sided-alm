@@ -41,7 +41,7 @@ contract MockAuctionFull {
         return availableValue;
     }
 
-    function kick(address _token) external returns (uint256) {
+    function kick(address /* _token */) external view returns (uint256) {
         return kickReturnValue;
     }
 
@@ -97,7 +97,7 @@ contract AuctionTests is Setup {
     }
 
     function test_kickAuction_noAuctionSet(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Enable auctions but don't set auction address
         vm.prank(management);
@@ -257,8 +257,6 @@ contract AuctionTests is Setup {
         uint256 rewardAmount = 1000e18;
         rewardToken.mint(address(strategy), rewardAmount);
 
-        uint256 balanceBefore = rewardToken.balanceOf(address(strategy));
-
         vm.prank(management);
         uint256 kickedAmount = strategy.kickAuction(address(rewardToken));
 
@@ -272,7 +270,7 @@ contract AuctionTests is Setup {
     function test_kickAuction_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.prank(user);
         vm.expectRevert();
@@ -280,7 +278,7 @@ contract AuctionTests is Setup {
     }
 
     function test_claim_merklRewards(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Prepare claim parameters (empty arrays for basic test)
         address[] memory users = new address[](0);
@@ -299,7 +297,7 @@ contract AuctionTests is Setup {
     }
 
     function test_claim_withParameters(IStrategyInterface strategy) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Prepare claim parameters with some data
         address[] memory users = new address[](1);

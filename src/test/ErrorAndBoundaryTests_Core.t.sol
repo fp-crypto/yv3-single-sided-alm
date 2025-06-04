@@ -349,7 +349,7 @@ contract ErrorAndBoundaryTests_Core is Setup {
     function test_deployFunds_freeFunds_doNothing(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // These functions should do nothing (no-op implementation)
         // They exist because they're required by BaseStrategy but swaps are needed

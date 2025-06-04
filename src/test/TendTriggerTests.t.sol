@@ -12,7 +12,7 @@ contract TendTriggerTests is Setup {
     function test_tendTrigger_defaultParameters(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         // Check initial default values
         assertEq(strategy.minTendWait(), 5 minutes, "default minTendWait");
@@ -200,8 +200,8 @@ contract TendTriggerTests is Setup {
             }
 
             // Should not trigger when below buffer
-            (bool trigger, ) = strategy.tendTrigger();
-            assertFalse(trigger, "should not trigger below buffer");
+            (bool triggerBelow, ) = strategy.tendTrigger();
+            assertFalse(triggerBelow, "should not trigger below buffer");
 
             // Deposit more to exceed buffer
             mintAndDepositIntoStrategy(strategy, user, targetIdle / 2);
@@ -274,7 +274,7 @@ contract TendTriggerTests is Setup {
     function test_setMinTendWait_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.expectRevert("!management");
         strategy.setMinTendWait(2 hours);
@@ -287,7 +287,7 @@ contract TendTriggerTests is Setup {
     function test_setMaxTendBaseFee_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.expectRevert("!management");
         strategy.setMaxTendBaseFee(200);
@@ -339,7 +339,7 @@ contract TendTriggerTests is Setup {
     function test_setMinAsset_onlyManagement(
         IStrategyInterface strategy
     ) public {
-        TestParams memory params = _getTestParams(address(strategy));
+        _getTestParams(address(strategy));
 
         vm.expectRevert("!management");
         strategy.setMinAsset(1e18);
