@@ -199,7 +199,10 @@ contract ErrorAndBoundaryTests_MinAsset is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -220,7 +223,10 @@ contract ErrorAndBoundaryTests_MinAsset is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -326,7 +332,10 @@ contract ErrorAndBoundaryTests_MinAsset is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -342,7 +351,10 @@ contract ErrorAndBoundaryTests_MinAsset is Setup {
             // Withdrawal succeeded
         } catch {
             // Skip test for problematic Steer LP addresses
-            console2.log("Skipping test due to problematic Steer LP withdrawal:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP withdrawal:",
+                address(strategy)
+            );
             return;
         }
 
@@ -358,7 +370,10 @@ contract ErrorAndBoundaryTests_MinAsset is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 

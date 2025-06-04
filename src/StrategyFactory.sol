@@ -62,7 +62,7 @@ contract StrategyFactory {
         _newStrategy.setKeeper(keeper);
         _newStrategy.setPendingManagement(management);
         _newStrategy.setEmergencyAdmin(emergencyAdmin);
-        
+
         emit NewStrategy(address(_newStrategy), _asset, _steerLP);
 
         return address(_newStrategy);

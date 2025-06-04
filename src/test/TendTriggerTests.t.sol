@@ -48,7 +48,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -92,7 +95,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -166,7 +172,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -224,7 +233,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -355,7 +367,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -364,13 +379,22 @@ contract TendTriggerTests is Setup {
             address(strategy)
         );
         console2.log("LP balance after initial tend:", lpBalanceInitial);
-        console2.log("Asset balance after initial tend:", params.asset.balanceOf(address(strategy)));
-        console2.log("Total assets after initial tend:", strategy.totalAssets());
-        
+        console2.log(
+            "Asset balance after initial tend:",
+            params.asset.balanceOf(address(strategy))
+        );
+        console2.log(
+            "Total assets after initial tend:",
+            strategy.totalAssets()
+        );
+
         if (lpBalanceInitial == 0) {
             // No LP tokens were created - this can happen with problematic Steer LPs
             // Skip the test as there's nothing to withdraw from
-            console2.log("No LP tokens created - skipping test for strategy:", address(strategy));
+            console2.log(
+                "No LP tokens created - skipping test for strategy:",
+                address(strategy)
+            );
             return;
         }
 
@@ -392,7 +416,10 @@ contract TendTriggerTests is Setup {
             // Tend succeeded
         } catch {
             // Skip test for problematic Steer LP addresses that cause "C" errors
-            console2.log("Skipping test due to problematic Steer LP:", address(strategy));
+            console2.log(
+                "Skipping test due to problematic Steer LP:",
+                address(strategy)
+            );
             return;
         }
 
@@ -403,23 +430,33 @@ contract TendTriggerTests is Setup {
 
         // Verify idle is approximately target (50% of total assets)
         uint256 targetIdle = (strategy.totalAssets() * 5000) / 10000;
-        
+
         // Check if withdrawal actually occurred (LP decreased)
         bool withdrawalOccurred = lpAfter < lpBefore;
-        
+
         if (withdrawalOccurred) {
             // If withdrawal occurred, check if idle is reasonably close to target
             // Use a generous tolerance as some strategies may have constraints
             // that prevent perfect target achievement
-            assertApproxEqRel(idleAfter, targetIdle, 0.5e18, "Idle should be ~50%");
+            assertApproxEqRel(
+                idleAfter,
+                targetIdle,
+                0.5e18,
+                "Idle should be ~50%"
+            );
         } else {
             // If no withdrawal occurred, it may be due to minAsset constraints
             // or Steer LP rejection. Log this case and pass the test.
-            console2.log("No withdrawal occurred - likely blocked by constraints");
+            console2.log(
+                "No withdrawal occurred - likely blocked by constraints"
+            );
             console2.log("Strategy address:", address(strategy));
             console2.log("Target idle:", targetIdle);
             console2.log("Actual idle:", idleAfter);
-            assertTrue(true, "Test passed - withdrawal was blocked by constraints");
+            assertTrue(
+                true,
+                "Test passed - withdrawal was blocked by constraints"
+            );
         }
     }
 }
