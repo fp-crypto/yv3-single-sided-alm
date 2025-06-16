@@ -277,7 +277,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             total1InLp,
             totalLpShares
         );
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+        uint160 sqrtPriceX96 = _getSqrtPriceX96();
         uint256 valuePairedTokenInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
@@ -304,7 +304,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 amountOfPairedToken
     ) internal view returns (uint256 value) {
         if (amountOfPairedToken == 0) return 0;
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+        uint160 sqrtPriceX96 = _getSqrtPriceX96();
         return _valueOfPairedTokenInAsset(amountOfPairedToken, sqrtPriceX96);
     }
 
@@ -622,7 +622,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             availableForDeposit = assetBalance - targetIdleAmount;
         }
 
-        (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
+        uint160 sqrtPriceX96 = _getSqrtPriceX96();
 
         uint256 pairedTokenValueInAsset = _valueOfPairedTokenInAsset(
             pairedTokenBalance,
@@ -811,6 +811,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256) {
         uint256 totalAssets = TokenizedStrategy.totalAssets();
         return (totalAssets * _targetIdleAssetBps) / MAX_BPS;
+    }
+
+    function _getSqrtPriceX96() internal view returns (uint160 sqrtPriceX96) {
+        (sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL).slot0();
     }
 
     /*//////////////////////////////////////////////////////////////
