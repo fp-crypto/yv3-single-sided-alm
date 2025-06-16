@@ -340,7 +340,7 @@ contract Setup is Test, IEvents {
             "LP balance: %e",
             ERC20(params.lp).balanceOf(address(params.strategy))
         );
-        console2.log("LP in asset: %e", params.strategy.lpVaultInAsset());
+        console2.log("LP in asset: %e", params.strategy.lpValueInAsset());
         console2.log("======================");
     }
 }

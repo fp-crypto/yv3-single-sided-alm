@@ -144,7 +144,7 @@ contract ErrorAndBoundaryTests_OutOfRange is Setup {
 
         // Check valuations after price movement
         uint256 estimatedTotalAfter = strategy.estimatedTotalAsset();
-        uint256 lpValueAfter = strategy.lpVaultInAsset();
+        uint256 lpValueAfter = strategy.lpValueInAsset();
 
         // Valuations should still be calculated (even if values changed due to price movement)
         assertGt(

@@ -76,16 +76,16 @@ contract PriceCalculationTests is Setup {
         assertGt(estimatedTotal, 0, "Should have positive estimated total");
     }
 
-    function test_lpVaultInAsset_noLpShares(
+    function test_lpValueInAsset_noLpShares(
         IStrategyInterface strategy
     ) public {
         _getTestParams(address(strategy));
 
         // Should return 0 when no LP shares
-        assertEq(strategy.lpVaultInAsset(), 0);
+        assertEq(strategy.lpValueInAsset(), 0);
     }
 
-    function test_lpVaultInAsset_withLpShares(
+    function test_lpValueInAsset_withLpShares(
         IStrategyInterface strategy,
         uint256 _amount
     ) public {
@@ -98,7 +98,7 @@ contract PriceCalculationTests is Setup {
         vm.prank(keeper);
         strategy.tend();
 
-        uint256 lpValue = strategy.lpVaultInAsset();
+        uint256 lpValue = strategy.lpValueInAsset();
         assertGt(lpValue, 0, "LP value should be positive");
 
         // LP value should be reasonable compared to deposited amount
@@ -277,7 +277,7 @@ contract PriceCalculationTests is Setup {
         );
 
         // Price calculations should not overflow or underflow
-        uint256 lpValue = strategy.lpVaultInAsset();
+        uint256 lpValue = strategy.lpValueInAsset();
         assertGt(lpValue, 0, "LP value calculation should work");
 
         uint256 totalAssets = strategy.estimatedTotalAsset();
@@ -289,7 +289,7 @@ contract PriceCalculationTests is Setup {
 
         // All calculations should handle zero amounts gracefully
         assertEq(strategy.estimatedTotalAsset(), 0);
-        assertEq(strategy.lpVaultInAsset(), 0);
+        assertEq(strategy.lpValueInAsset(), 0);
         assertEq(strategy.availableWithdrawLimit(user), 0);
 
         // Should not revert on zero amounts
@@ -435,12 +435,12 @@ contract PriceCalculationTests is Setup {
         if (ERC20(params.lp).balanceOf(address(strategy)) == 0) return;
 
         // Test LP valuation with different discounts
-        uint256 lpValueDefault = strategy.lpVaultInAsset();
+        uint256 lpValueDefault = strategy.lpValueInAsset();
 
         // Set zero discount
         vm.prank(management);
         strategy.setPairedTokenDiscountBps(0);
-        uint256 lpValueNoDiscount = strategy.lpVaultInAsset();
+        uint256 lpValueNoDiscount = strategy.lpValueInAsset();
 
         // LP value should be higher without discount (or equal if LP has only asset)
         assertGe(
@@ -452,7 +452,7 @@ contract PriceCalculationTests is Setup {
         // Set high discount
         vm.prank(management);
         strategy.setPairedTokenDiscountBps(500); // 5%
-        uint256 lpValueHighDiscount = strategy.lpVaultInAsset();
+        uint256 lpValueHighDiscount = strategy.lpValueInAsset();
 
         // LP value should be lower with high discount (or equal if LP has only asset)
         assertLe(

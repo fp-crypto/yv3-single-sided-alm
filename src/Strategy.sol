@@ -242,7 +242,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 _pairedTokenBalanceInAsset = _valueOfPairedTokenInAsset(
             _pairedTokenBalance
         );
-        uint256 _lpBalanceInAsset = lpVaultInAsset();
+        uint256 _lpBalanceInAsset = lpValueInAsset();
         return _assetBalance + _pairedTokenBalanceInAsset + _lpBalanceInAsset;
     }
 
@@ -254,7 +254,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      *      current pool price.
      * @return valueLpInAssetTerms The total value of LP holdings in terms of the asset.
      */
-    function lpVaultInAsset()
+    function lpValueInAsset()
         public
         view
         returns (uint256 valueLpInAssetTerms)
@@ -527,6 +527,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 pairedTokenBalance,
         uint160 sqrtPriceX96
     ) internal {
+        uint256 _minAsset = uint256(minAsset);
+
         if (targetPairedTokenValueInAsset > currentPairedTokenValueInAsset) {
             // Need more paired token
             uint256 assetValueToSwap = targetPairedTokenValueInAsset -
@@ -534,7 +536,12 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             if (assetValueToSwap > assetBalance) {
                 assetValueToSwap = assetBalance;
             }
-            if (assetValueToSwap > 0) {
+
+            // Only swap if above minAsset threshold
+            if (
+                assetValueToSwap > 0 &&
+                (_minAsset == 0 || assetValueToSwap >= _minAsset)
+            ) {
                 _swapAssetForPairedToken(assetValueToSwap);
             }
         } else if (
@@ -543,15 +550,19 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             // Have excess paired token
             uint256 excessPairedTokenValueInAsset = currentPairedTokenValueInAsset -
                     targetPairedTokenValueInAsset;
-            uint256 pairedTokenQuantityToSwap = _assetValueToPairedAmount(
-                excessPairedTokenValueInAsset,
-                sqrtPriceX96
-            );
-            if (pairedTokenQuantityToSwap > pairedTokenBalance) {
-                pairedTokenQuantityToSwap = pairedTokenBalance;
-            }
-            if (pairedTokenQuantityToSwap > 0) {
-                _swapPairedTokenForAsset(pairedTokenQuantityToSwap);
+
+            // Only swap if above minAsset threshold
+            if (_minAsset == 0 || excessPairedTokenValueInAsset >= _minAsset) {
+                uint256 pairedTokenQuantityToSwap = _assetValueToPairedAmount(
+                    excessPairedTokenValueInAsset,
+                    sqrtPriceX96
+                );
+                if (pairedTokenQuantityToSwap > pairedTokenBalance) {
+                    pairedTokenQuantityToSwap = pairedTokenBalance;
+                }
+                if (pairedTokenQuantityToSwap > 0) {
+                    _swapPairedTokenForAsset(pairedTokenQuantityToSwap);
+                }
             }
         }
     }
@@ -655,31 +666,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 sqrtPriceX96
             );
 
-        // Check if we need to swap and if the swap would be blocked by minAsset
-        uint256 _minAsset = uint256(minAsset);
-        if (_minAsset > 0) {
-            if (targetPairedTokenValueInAsset > pairedTokenValueInAsset) {
-                // Need to swap asset to paired token
-                uint256 assetToSwap = targetPairedTokenValueInAsset -
-                    pairedTokenValueInAsset;
-                if (assetToSwap > availableForDeposit) {
-                    assetToSwap = availableForDeposit;
-                }
-                if (assetToSwap > 0 && assetToSwap < _minAsset) {
-                    return; // Swap amount below minAsset threshold
-                }
-            } else if (
-                pairedTokenValueInAsset > targetPairedTokenValueInAsset
-            ) {
-                // Need to swap paired token to asset
-                uint256 excessPairedValue = pairedTokenValueInAsset -
-                    targetPairedTokenValueInAsset;
-                if (excessPairedValue > 0 && excessPairedValue < _minAsset) {
-                    return; // Swap value below minAsset threshold
-                }
-            }
-        }
-
         _performRebalancingSwap(
             pairedTokenValueInAsset,
             targetPairedTokenValueInAsset,
@@ -707,17 +693,17 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 lpSharesBalance = STEER_LP.balanceOf(address(this));
         if (lpSharesBalance == 0) return;
 
-        uint256 lpValueInAsset = lpVaultInAsset();
-        if (lpValueInAsset == 0) return;
+        uint256 _lpValueInAsset = lpValueInAsset();
+        if (_lpValueInAsset == 0) return;
 
         uint256 sharesToWithdraw;
-        if (assetToWithdraw >= lpValueInAsset) {
+        if (assetToWithdraw >= _lpValueInAsset) {
             sharesToWithdraw = lpSharesBalance;
         } else {
             sharesToWithdraw = FullMath.mulDiv(
                 assetToWithdraw,
                 lpSharesBalance,
-                lpValueInAsset
+                _lpValueInAsset
             );
         }
 

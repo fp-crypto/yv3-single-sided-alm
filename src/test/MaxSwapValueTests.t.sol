@@ -438,7 +438,7 @@ contract MaxSwapValueTests is Setup {
         // Calculate the value of paired tokens
         uint256 pairedValueInAsset = strategy.estimatedTotalAsset() -
             params.asset.balanceOf(address(strategy)) -
-            strategy.lpVaultInAsset();
+            strategy.lpValueInAsset();
 
         // Set maxSwapValue to less than the paired token value
         // This will trigger the conversion code at lines 492-497
@@ -598,7 +598,7 @@ contract MaxSwapValueTests is Setup {
         // Calculate paired token value
         uint256 pairedValueInAsset = strategy.estimatedTotalAsset() -
             assetBalance -
-            strategy.lpVaultInAsset();
+            strategy.lpValueInAsset();
 
         // Set a very low maxSwapValue to ensure we trigger the conversion code
         // This needs to be less than the paired token value to trigger lines 492-497

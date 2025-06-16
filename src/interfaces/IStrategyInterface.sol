@@ -5,7 +5,7 @@ import {IBaseHealthCheck} from "@periphery/Bases/HealthCheck/IBaseHealthCheck.so
 import {IMerklDistributor} from "./IMerklDistributor.sol";
 
 interface IStrategyInterface is IBaseHealthCheck {
-    function lpVaultInAsset()
+    function lpValueInAsset()
         external
         view
         returns (uint256 valueLpInAssetTerms);
