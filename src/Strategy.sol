@@ -264,7 +264,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         uint256 totalLpShares = STEER_LP.totalSupply();
         if (totalLpShares == 0) return 0;
-        
+
         (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
 
         uint256 balanceOfToken0InLp = FullMath.mulDiv(
@@ -991,9 +991,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 _totalBalance = _strategyBalance +
             ERC20(_from).balanceOf(_auction);
         if (_totalBalance == 0) return (false, 0);
-        ERC20(_from).safeTransfer(_auction, _strategyBalance);
+        if (_strategyBalance != 0) {
+            ERC20(_from).safeTransfer(_auction, _strategyBalance);
+        }
         uint256 _amountKicked = IAuction(_auction).kick(_from);
-        return (_amountKicked != 0, _amountKicked);
+        return (true, _amountKicked);
     }
 
     /*//////////////////////////////////////////////////////////////
