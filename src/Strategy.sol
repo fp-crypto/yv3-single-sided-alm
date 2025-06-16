@@ -394,7 +394,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /**
      * @notice Calculates the amount of the strategy's asset to swap to achieve a balanced
      *         deposit into the Uniswap V3 LP, based on the current LP composition.
-     * @dev If the LP is empty, returns 0.Otherwise, it calculates the swap amount
+     * @dev If the LP is empty, returns 0. Otherwise, it calculates the swap amount
      *      to match the LP's current token value ratio.
      * @param assetBalance The current balance of the strategy's asset available for deposit.
      * @param total0InLp The total amount of token0 in the Uniswap V3 LP.
