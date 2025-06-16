@@ -179,7 +179,9 @@ contract Setup is Test, IEvents {
                 strategyFactory.newStrategy(
                     ISushiMultiPositionLiquidityManager(lp).token0(),
                     "Tokenized Strategy",
-                    lp
+                    lp,
+                    0, // minAsset = 0 (disabled by default)
+                    type(uint256).max // maxSwapValue = unlimited for tests
                 )
             )
         );
@@ -189,7 +191,9 @@ contract Setup is Test, IEvents {
                 strategyFactory.newStrategy(
                     ISushiMultiPositionLiquidityManager(lp).token1(),
                     "Tokenized Strategy",
-                    lp
+                    lp,
+                    0, // minAsset = 0 (disabled by default)
+                    type(uint256).max // maxSwapValue = unlimited for tests
                 )
             )
         );

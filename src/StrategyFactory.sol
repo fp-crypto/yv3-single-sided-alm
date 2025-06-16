@@ -42,18 +42,22 @@ contract StrategyFactory {
      * @param _asset The underlying asset for the strategy to use
      * @param _name The name for the strategy
      * @param _steerLP The Steer LP contract address
+     * @param _minAsset Minimum asset amount for any operation (dust threshold)
+     * @param _maxSwapValue Maximum value that can be swapped in a single transaction
      * @return The address of the new strategy
      */
     function newStrategy(
         address _asset,
         string calldata _name,
-        address _steerLP
+        address _steerLP,
+        uint128 _minAsset,
+        uint256 _maxSwapValue
     ) external virtual returns (address) {
         require(_deploymentMapping[_asset][_steerLP] == address(0), "!new");
 
         // tokenized strategies available setters.
         IStrategyInterface _newStrategy = IStrategyInterface(
-            address(new Strategy(_asset, _name, _steerLP))
+            address(new Strategy(_asset, _name, _steerLP, _minAsset, _maxSwapValue))
         );
         _deployments.add(address(_newStrategy));
         _deploymentMapping[_asset][_steerLP] = address(_newStrategy);

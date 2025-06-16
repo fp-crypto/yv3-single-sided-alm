@@ -69,7 +69,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     uint256 public depositLimit = type(uint256).max;
 
     /// @notice Maximum value that can be swapped in a single transaction (in asset terms)
-    uint256 public maxSwapValue = type(uint256).max;
+    uint256 public maxSwapValue;
 
     /*//////////////////////////////////////////////////////////////
                               STRUCTS
@@ -83,7 +83,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     constructor(
         address _asset,
         string memory _name,
-        address _steerLP
+        address _steerLP,
+        uint128 _minAsset,
+        uint256 _maxSwapValue
     ) BaseHealthCheck(_asset, _name) {
         require(_steerLP != address(0), "!0");
         STEER_LP = ISushiMultiPositionLiquidityManager(_steerLP);
@@ -99,6 +101,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             require(address(asset) == _token1, "!asset");
             _PAIRED_TOKEN = _token0;
         }
+        
+        minAsset = _minAsset;
+        maxSwapValue = _maxSwapValue;
     }
 
     /*//////////////////////////////////////////////////////////////

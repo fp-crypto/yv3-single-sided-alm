@@ -14,7 +14,7 @@ contract ErrorAndBoundaryTests_Core is Setup {
     function test_constructor_invalidSteerLP() public {
         // Test constructor with address(0) for _steerLP parameter
         vm.expectRevert(bytes("!0"));
-        new Strategy(tokenAddrs["DAI"], "Test Strategy", address(0));
+        new Strategy(tokenAddrs["DAI"], "Test Strategy", address(0), 0, type(uint256).max);
     }
 
     function test_constructor_invalidAsset() public {
@@ -25,7 +25,9 @@ contract ErrorAndBoundaryTests_Core is Setup {
         new Strategy(
             invalidAsset,
             "Invalid Strategy",
-            tokenAddrs["steerDAIUSDC"]
+            tokenAddrs["steerDAIUSDC"],
+            0,
+            type(uint256).max
         );
     }
 
