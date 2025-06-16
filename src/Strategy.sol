@@ -160,7 +160,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     // @inheritdoc BaseStrategy
     function _tendTrigger() internal view override returns (bool) {
         // Check if minimum wait time has passed
-        if (block.timestamp < lastTend + uint256(minTendWait)) {
+        if (block.timestamp < uint256(lastTend) + uint256(minTendWait)) {
             return false;
         }
 
@@ -343,7 +343,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 amountOfPairedToken,
         uint160 sqrtPriceX96
     ) internal view returns (uint256 value) {
-        if (amountOfPairedToken == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
             // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
             value = FullMath.mulDiv(
@@ -691,7 +690,6 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         if (assetToWithdraw == 0) return;
 
         uint256 lpSharesBalance = STEER_LP.balanceOf(address(this));
-        if (lpSharesBalance == 0) return;
 
         uint256 _lpValueInAsset = lpValueInAsset();
         if (_lpValueInAsset == 0) return;
