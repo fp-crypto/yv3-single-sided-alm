@@ -132,9 +132,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
         if (_targetIdleAssetBps > 0) {
             // We have a target idle, check if we need to rebalance
-            uint256 totalAssets = TokenizedStrategy.totalAssets();
-            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
-                MAX_BPS;
+            uint256 targetIdleAmount = _getTargetIdleAmount(
+                _targetIdleAssetBps
+            );
 
             if (_totalIdle > targetIdleAmount) {
                 // Check if excess is above minAsset threshold
@@ -175,9 +175,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         // If target idle is set, check if we need to rebalance
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
-            uint256 totalAssets = TokenizedStrategy.totalAssets();
-            uint256 targetIdleAmount = (totalAssets * _targetIdleAssetBps) /
-                MAX_BPS;
+            uint256 targetIdleAmount = _getTargetIdleAmount(
+                _targetIdleAssetBps
+            );
 
             // Calculate bounds using configurable buffer
             uint256 bufferAmount = (targetIdleAmount *
@@ -613,8 +613,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         // Apply idle asset target
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         if (_targetIdleAssetBps > 0) {
-            uint256 totalAssets = TokenizedStrategy.totalAssets();
-            targetIdleAmount = (totalAssets * _targetIdleAssetBps) / MAX_BPS;
+            targetIdleAmount = _getTargetIdleAmount(_targetIdleAssetBps);
 
             // Only deposit if above target idle amount
             if (assetBalance <= targetIdleAmount) return;
@@ -805,6 +804,13 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                 amountPaid = uint256(amount0Delta);
             }
         }
+    }
+
+    function _getTargetIdleAmount(
+        uint256 _targetIdleAssetBps
+    ) internal view returns (uint256) {
+        uint256 totalAssets = TokenizedStrategy.totalAssets();
+        return (totalAssets * _targetIdleAssetBps) / MAX_BPS;
     }
 
     /*//////////////////////////////////////////////////////////////
