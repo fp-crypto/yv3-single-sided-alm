@@ -262,9 +262,10 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 balanceOfLpShares = STEER_LP.balanceOf(address(this));
         if (balanceOfLpShares == 0) return 0;
 
-        (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
         uint256 totalLpShares = STEER_LP.totalSupply();
         if (totalLpShares == 0) return 0;
+        
+        (uint256 total0InLp, uint256 total1InLp) = STEER_LP.getTotalAmounts();
 
         uint256 balanceOfToken0InLp = FullMath.mulDiv(
             balanceOfLpShares,
