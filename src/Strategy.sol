@@ -212,7 +212,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
 
     // @inheritdoc BaseStrategy
     function availableDepositLimit(
-        address _owner
+        address /* _owner */
     ) public view override returns (uint256) {
         uint256 currentAssets = TokenizedStrategy.totalAssets();
         uint256 _depositLimit = depositLimit;
