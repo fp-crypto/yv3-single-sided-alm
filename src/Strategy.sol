@@ -214,15 +214,14 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     function availableDepositLimit(
         address _owner
     ) public view override returns (uint256) {
-        uint256 baseLimit = super.availableDepositLimit(_owner);
         uint256 currentAssets = TokenizedStrategy.totalAssets();
+        uint256 _depositLimit = depositLimit;
 
-        if (currentAssets >= depositLimit) {
+        if (_depositLimit <= currentAssets) {
             return 0;
         }
 
-        uint256 remainingCapacity = depositLimit - currentAssets;
-        return baseLimit < remainingCapacity ? baseLimit : remainingCapacity;
+        return _depositLimit - currentAssets;
     }
 
     /*//////////////////////////////////////////////////////////////
@@ -925,6 +924,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /**
      * @notice Manually swaps paired token for asset
      * @param _amount Amount of paired token to swap
+     * @dev This function is limited by maxSwapValueset.
+            Set maxSwapValue to an appropriate value before swapping
      */
     function manualSwapPairedTokenToAsset(
         uint256 _amount
@@ -941,6 +942,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     /**
      * @notice Manually withdraws from LP position
      * @param _amount Amount of asset value to withdraw from LP
+     * @dev This function will swap excessed paired token limited by maxSwapValue
+     *      Set maxSwapValue = 0 if you want to prevent swapping.
      */
     function manualWithdrawFromLp(uint256 _amount) external onlyManagement {
         require(_amount > 0, "!amount"); // dev: Amount must be greater than 0
@@ -948,7 +951,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     }
 
     /*//////////////////////////////////////////////////////////////
-                        AUCTION FUNCTIONS
+        AUCTION FUNCTIONS
     //////////////////////////////////////////////////////////////*/
 
     /**
