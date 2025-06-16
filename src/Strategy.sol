@@ -396,14 +396,14 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      *         deposit into the Uniswap V3 LP, based on the current LP composition.
      * @dev If the LP is empty, returns 0. Otherwise, it calculates the swap amount
      *      to match the LP's current token value ratio.
-     * @param assetBalance The current balance of the strategy's asset available for deposit.
+     * @param totalDepositValue The total value available for deposit (asset + paired token value in asset terms).
      * @param total0InLp The total amount of token0 in the Uniswap V3 LP.
      * @param total1InLp The total amount of token1 in the Uniswap V3 LP.
      * @param sqrtPriceX96 The current sqrt price (Q64.96) of the Uniswap V3 pool.
      * @return amountToSwap The calculated amount of asset to swap.
      */
     function _calculateAmountToSwapForDeposit(
-        uint256 assetBalance,
+        uint256 totalDepositValue,
         uint256 total0InLp,
         uint256 total1InLp,
         uint160 sqrtPriceX96
@@ -432,7 +432,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         if (totalLpValueInAsset == 0) return 0;
         // Calculate swap amount to match LP's token value ratio
         amountToSwap = FullMath.mulDiv(
-            assetBalance,
+            totalDepositValue,
             pairedTokenValueInAsset,
             totalLpValueInAsset
         );
