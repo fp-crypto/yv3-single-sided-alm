@@ -277,19 +277,16 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             total1InLp,
             totalLpShares
         );
-        uint160 sqrtPriceX96 = _getSqrtPriceX96();
         uint256 valuePairedTokenInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
             valuePairedTokenInAsset = _valueOfPairedTokenInAsset(
-                balanceOfToken1InLp,
-                sqrtPriceX96
+                balanceOfToken1InLp
             );
             valueLpInAssetTerms = balanceOfToken0InLp + valuePairedTokenInAsset;
         } else {
             valuePairedTokenInAsset = _valueOfPairedTokenInAsset(
-                balanceOfToken0InLp,
-                sqrtPriceX96
+                balanceOfToken0InLp
             );
             valueLpInAssetTerms = balanceOfToken1InLp + valuePairedTokenInAsset;
         }
