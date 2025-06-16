@@ -454,7 +454,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
      * @param amountToSwap The amount of paired token to swap
      */
     function _swapPairedTokenForAsset(uint256 amountToSwap) internal {
-        _performSwap(address(_PAIRED_TOKEN), amountToSwap, !_ASSET_IS_TOKEN_0);
+        _performSwap(_PAIRED_TOKEN, amountToSwap, !_ASSET_IS_TOKEN_0);
     }
 
     /**
