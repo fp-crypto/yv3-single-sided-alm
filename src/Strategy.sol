@@ -487,11 +487,9 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
                     amountToSwap = _maxSwapValue;
                 } else {
                     // Convert maxSwapValue back to paired token amount
-                    (uint160 sqrtPriceX96, , , , , , ) = IUniswapV3Pool(_POOL)
-                        .slot0();
                     amountToSwap = _assetValueToPairedAmount(
                         _maxSwapValue,
-                        sqrtPriceX96
+                        _getSqrtPriceX96()
                     );
                 }
             }
