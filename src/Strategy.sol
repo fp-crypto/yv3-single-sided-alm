@@ -101,7 +101,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             require(address(asset) == _token1, "!asset");
             _PAIRED_TOKEN = _token0;
         }
-        
+
         minAsset = _minAsset;
         maxSwapValue = _maxSwapValue;
     }

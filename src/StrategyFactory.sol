@@ -57,7 +57,9 @@ contract StrategyFactory {
 
         // tokenized strategies available setters.
         IStrategyInterface _newStrategy = IStrategyInterface(
-            address(new Strategy(_asset, _name, _steerLP, _minAsset, _maxSwapValue))
+            address(
+                new Strategy(_asset, _name, _steerLP, _minAsset, _maxSwapValue)
+            )
         );
         _deployments.add(address(_newStrategy));
         _deploymentMapping[_asset][_steerLP] = address(_newStrategy);
