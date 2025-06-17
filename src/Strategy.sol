@@ -306,7 +306,8 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 amountOfPairedToken
     ) internal view returns (uint256 value) {
         if (amountOfPairedToken == 0) return 0;
-        return _valueOfPairedTokenInAsset(amountOfPairedToken, _getSqrtPriceX96());
+        return
+            _valueOfPairedTokenInAsset(amountOfPairedToken, _getSqrtPriceX96());
     }
 
     /**
