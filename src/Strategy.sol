@@ -123,15 +123,19 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     // @inheritdoc BaseStrategy
     function _harvestAndReport()
         internal
-        view
         override
         returns (uint256 _totalAssets)
     {
+        // Update fees before calculating total assets
+        STEER_LP.poke();
         _totalAssets = estimatedTotalAsset();
     }
 
     // @inheritdoc BaseStrategy
     function _tend(uint256 _totalIdle) internal override {
+        // Update fees before any LP operations
+        STEER_LP.poke();
+
         uint256 _targetIdleAssetBps = uint256(targetIdleAssetBps);
         uint256 _minAsset = uint256(minAsset);
 
@@ -188,18 +192,16 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             uint256 bufferAmount = (targetIdleAmount *
                 uint256(targetIdleBufferBps)) / MAX_BPS;
             uint256 upperBound = targetIdleAmount + bufferAmount;
-            uint256 lowerBound = targetIdleAmount > bufferAmount
-                ? targetIdleAmount - bufferAmount
-                : 0;
+            uint256 lowerBound = targetIdleAmount - bufferAmount;
 
             // Trigger if we're outside the acceptable range
             // Let _tend handle minAsset checks
             return idleAsset > upperBound || idleAsset < lowerBound;
         }
 
-        // If no target is set, only trigger if we have idle assets
-        // Let _tend handle minAsset checks
-        return idleAsset > 0;
+        // If no target is set, only trigger if we have idle assets above minAsset
+        uint256 _minAsset = uint256(minAsset);
+        return _minAsset == 0 ? idleAsset > 0 : idleAsset >= _minAsset;
     }
 
     // @inheritdoc BaseStrategy
@@ -350,10 +352,11 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 value) {
         if (_ASSET_IS_TOKEN_0) {
             // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
+            // Safe calculation to avoid underflow
             value = FullMath.mulDiv(
-                amountOfPairedToken,
+                FullMath.mulDiv(amountOfPairedToken, Q96, sqrtPriceX96),
                 Q96,
-                FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
+                sqrtPriceX96
             );
         } else {
             // Convert token0 to token1: amount0 * (sqrtPriceX96^2 / Q96^2)
@@ -377,16 +380,18 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 _amountOfPairedToken) {
         if (_valueInAssetTerms == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
+            // Safe calculation to avoid underflow
             _amountOfPairedToken = FullMath.mulDiv(
-                _valueInAssetTerms,
-                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
+                FullMath.mulDiv(_valueInAssetTerms, _sqrtPriceX96, Q96),
+                _sqrtPriceX96,
                 Q96
             );
         } else {
+            // Safe calculation to avoid underflow
             _amountOfPairedToken = FullMath.mulDiv(
-                _valueInAssetTerms,
+                FullMath.mulDiv(_valueInAssetTerms, Q96, _sqrtPriceX96),
                 Q96,
-                FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96)
+                _sqrtPriceX96
             );
         }
     }
@@ -418,13 +423,17 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 totalLpValueInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
+            // Calculate price safely to avoid underflow
+            // price = sqrtPrice^2 / 2^96
+            // To avoid underflow when sqrtPrice < 2^48, multiply numerator by 2^96 first
             pairedTokenValueInAsset = FullMath.mulDiv(
-                total1InLp,
+                FullMath.mulDiv(total1InLp, Q96, sqrtPriceX96),
                 Q96,
-                FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96)
+                sqrtPriceX96
             );
             totalLpValueInAsset = total0InLp + pairedTokenValueInAsset;
         } else {
+            // Calculate price safely: total0 * sqrtPrice^2 / 2^96
             pairedTokenValueInAsset = FullMath.mulDiv(
                 FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
                 sqrtPriceX96,
@@ -677,7 +686,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         );
 
         availableForDeposit = asset.balanceOf(address(this));
-        if (availableForDeposit <= targetIdleAmount) return;
+        if (availableForDeposit < targetIdleAmount) return;
 
         _performLpDeposit(availableForDeposit - targetIdleAmount);
     }
