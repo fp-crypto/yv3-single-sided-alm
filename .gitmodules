@@ -16,3 +16,6 @@
 	path = lib/uniswap-v3-core
 	url = https://github.com/Uniswap/v3-core.git
 	branch = simulate
+[submodule "lib/createx-forge"]
+	path = lib/createx-forge
+	url = https://github.com/radeksvarz/createx-forge
