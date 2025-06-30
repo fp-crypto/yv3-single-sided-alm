@@ -14,10 +14,10 @@ contract DeployCreateX is Script, CreateXScript {
 
     function run() public {
         bytes memory constructorArgs = abi.encode(
-            me,   // address _management,
-            sms,  // address _performanceFeeRecipient,
-            tks,  // address _keeper,
-            sms   // address _emergencyAdmin,
+            me, // address _management,
+            sms, // address _performanceFeeRecipient,
+            tks, // address _keeper,
+            sms // address _emergencyAdmin,
         );
 
         console.log("msg.sender: %s", msg.sender);
