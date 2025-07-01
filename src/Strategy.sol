@@ -351,20 +351,32 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint160 sqrtPriceX96
     ) internal view returns (uint256 value) {
         if (_ASSET_IS_TOKEN_0) {
-            // Convert token1 to token0: amount1 * (Q96^2 / sqrtPriceX96^2)
-            // Safe calculation to avoid underflow
+            // Convert token1 to token0: amount1 / price
+            // Calculate price ratio first to avoid underflow: (Q96^2 / sqrtPrice) / sqrtPrice
             value = FullMath.mulDiv(
-                FullMath.mulDiv(amountOfPairedToken, Q96, sqrtPriceX96),
-                Q96,
+                FullMath.mulDiv(Q96, Q96, sqrtPriceX96),
+                amountOfPairedToken,
                 sqrtPriceX96
             );
         } else {
-            // Convert token0 to token1: amount0 * (sqrtPriceX96^2 / Q96^2)
-            value = FullMath.mulDiv(
-                FullMath.mulDiv(amountOfPairedToken, sqrtPriceX96, Q96),
-                sqrtPriceX96,
-                Q96
-            );
+            // Convert token0 to token1: amount0 * price
+            // Check if we should calculate price first to avoid precision loss
+            // Safe check: amount < Q96 / sqrtPrice (avoiding overflow)
+            if (sqrtPriceX96 == 0 || amountOfPairedToken < Q96 / sqrtPriceX96) {
+                // Calculate price first when amount is small or price is very high
+                value = FullMath.mulDiv(
+                    FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96),
+                    amountOfPairedToken,
+                    Q96
+                );
+            } else {
+                // Standard calculation when amount is large enough
+                value = FullMath.mulDiv(
+                    FullMath.mulDiv(amountOfPairedToken, sqrtPriceX96, Q96),
+                    sqrtPriceX96,
+                    Q96
+                );
+            }
         }
     }
 
@@ -380,17 +392,32 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
     ) internal view returns (uint256 _amountOfPairedToken) {
         if (_valueInAssetTerms == 0) return 0;
         if (_ASSET_IS_TOKEN_0) {
-            // Safe calculation to avoid underflow
-            _amountOfPairedToken = FullMath.mulDiv(
-                FullMath.mulDiv(_valueInAssetTerms, _sqrtPriceX96, Q96),
-                _sqrtPriceX96,
-                Q96
-            );
+            // Convert asset value to token1: value * price
+            // Check if we should calculate price first to avoid precision loss
+            // Safe check: value < Q96 / sqrtPrice (avoiding overflow)
+            if (
+                _sqrtPriceX96 == 0 || _valueInAssetTerms < Q96 / _sqrtPriceX96
+            ) {
+                // Calculate price first when value is small
+                _amountOfPairedToken = FullMath.mulDiv(
+                    FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
+                    _valueInAssetTerms,
+                    Q96
+                );
+            } else {
+                // Standard calculation when value is large enough
+                _amountOfPairedToken = FullMath.mulDiv(
+                    FullMath.mulDiv(_valueInAssetTerms, _sqrtPriceX96, Q96),
+                    _sqrtPriceX96,
+                    Q96
+                );
+            }
         } else {
-            // Safe calculation to avoid underflow
+            // Convert asset value to token0: value / price
+            // Calculate price ratio first to avoid underflow
             _amountOfPairedToken = FullMath.mulDiv(
-                FullMath.mulDiv(_valueInAssetTerms, Q96, _sqrtPriceX96),
-                Q96,
+                FullMath.mulDiv(Q96, Q96, _sqrtPriceX96),
+                _valueInAssetTerms,
                 _sqrtPriceX96
             );
         }
@@ -423,22 +450,32 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         uint256 totalLpValueInAsset;
 
         if (_ASSET_IS_TOKEN_0) {
-            // Calculate price safely to avoid underflow
-            // price = sqrtPrice^2 / 2^96
-            // To avoid underflow when sqrtPrice < 2^48, multiply numerator by 2^96 first
+            // Convert token1 LP balance to token0 value
+            // Calculate price ratio first to avoid underflow
             pairedTokenValueInAsset = FullMath.mulDiv(
-                FullMath.mulDiv(total1InLp, Q96, sqrtPriceX96),
-                Q96,
+                FullMath.mulDiv(Q96, Q96, sqrtPriceX96),
+                total1InLp,
                 sqrtPriceX96
             );
             totalLpValueInAsset = total0InLp + pairedTokenValueInAsset;
         } else {
-            // Calculate price safely: total0 * sqrtPrice^2 / 2^96
-            pairedTokenValueInAsset = FullMath.mulDiv(
-                FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
-                sqrtPriceX96,
-                Q96
-            );
+            // Convert token0 LP balance to token1 value
+            // Check if we should calculate price first to avoid precision loss
+            if (sqrtPriceX96 == 0 || total0InLp < Q96 / sqrtPriceX96) {
+                // Calculate price first when amount is small
+                pairedTokenValueInAsset = FullMath.mulDiv(
+                    FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96),
+                    total0InLp,
+                    Q96
+                );
+            } else {
+                // Standard calculation when amount is large enough
+                pairedTokenValueInAsset = FullMath.mulDiv(
+                    FullMath.mulDiv(total0InLp, sqrtPriceX96, Q96),
+                    sqrtPriceX96,
+                    Q96
+                );
+            }
             totalLpValueInAsset = total1InLp + pairedTokenValueInAsset;
         }
 
