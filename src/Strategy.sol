@@ -362,7 +362,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             // Convert token0 to token1: amount0 * price
             // Check if we should calculate price first to avoid precision loss
             // Safe check: amount < Q96 / sqrtPrice (avoiding overflow)
-            if (sqrtPriceX96 == 0 || amountOfPairedToken < Q96 / sqrtPriceX96) {
+            if (amountOfPairedToken < Q96 / sqrtPriceX96) {
                 // Calculate price first when amount is small or price is very high
                 value = FullMath.mulDiv(
                     FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96),
@@ -395,9 +395,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
             // Convert asset value to token1: value * price
             // Check if we should calculate price first to avoid precision loss
             // Safe check: value < Q96 / sqrtPrice (avoiding overflow)
-            if (
-                _sqrtPriceX96 == 0 || _valueInAssetTerms < Q96 / _sqrtPriceX96
-            ) {
+            if (_valueInAssetTerms < Q96 / _sqrtPriceX96) {
                 // Calculate price first when value is small
                 _amountOfPairedToken = FullMath.mulDiv(
                     FullMath.mulDiv(_sqrtPriceX96, _sqrtPriceX96, Q96),
@@ -461,7 +459,7 @@ contract Strategy is BaseHealthCheck, IUniswapV3SwapCallback {
         } else {
             // Convert token0 LP balance to token1 value
             // Check if we should calculate price first to avoid precision loss
-            if (sqrtPriceX96 == 0 || total0InLp < Q96 / sqrtPriceX96) {
+            if (total0InLp < Q96 / sqrtPriceX96) {
                 // Calculate price first when amount is small
                 pairedTokenValueInAsset = FullMath.mulDiv(
                     FullMath.mulDiv(sqrtPriceX96, sqrtPriceX96, Q96),
