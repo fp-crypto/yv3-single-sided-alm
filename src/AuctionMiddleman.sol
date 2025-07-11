@@ -9,7 +9,11 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 interface IAuctionFactory {
-    function createNewAuction(address _want, address _receiver, address _governance) external returns (address);
+    function createNewAuction(
+        address _want,
+        address _receiver,
+        address _governance
+    ) external returns (address);
 }
 
 /// @title AuctionMiddleMan
@@ -20,7 +24,10 @@ contract AuctionMiddleMan is Governance {
     using SafeERC20 for ERC20;
 
     modifier onlyAddedStrategy() {
-        require(_isAddedStrategy(msg.sender), "AuctionMiddleMan: Not a strategy");
+        require(
+            _isAddedStrategy(msg.sender),
+            "AuctionMiddleMan: Not a strategy"
+        );
         _;
     }
 
@@ -28,15 +35,18 @@ contract AuctionMiddleMan is Governance {
         return auctions[_strategy] != address(0);
     }
 
-    IAuctionFactory public constant AUCTION_FACTORY = IAuctionFactory(0xCfA510188884F199fcC6e750764FAAbE6e56ec40);
+    IAuctionFactory public constant AUCTION_FACTORY =
+        IAuctionFactory(0xCfA510188884F199fcC6e750764FAAbE6e56ec40);
 
-    IDistributionCreator public constant DISTRIBUTION_CREATOR = IDistributionCreator(0x8BB4C975Ff3c250e0ceEA271728547f3802B36Fd);
+    IDistributionCreator public constant DISTRIBUTION_CREATOR =
+        IDistributionCreator(0x8BB4C975Ff3c250e0ceEA271728547f3802B36Fd);
 
     address public constant KAT = 0x7F1f4b4b29f5058fA32CC7a97141b8D7e5ABDC2d;
 
     address public constant WKAT = 0x3ba1fbC4c3aEA775d335b31fb53778f46FD3a330;
 
-    address public constant KAT_WRAPPER = 0xF057afeEc22E220f47AD4220871364e9E828b2e9;
+    address public constant KAT_WRAPPER =
+        0xF057afeEc22E220f47AD4220871364e9E828b2e9;
 
     mapping(address => address) public auctions;
 
@@ -49,10 +59,17 @@ contract AuctionMiddleMan is Governance {
     }
 
     function addStrategy(address _strategy) external onlyGovernance {
-        require(auctions[_strategy] == address(0), "AuctionMiddleMan: Strategy already added");
+        require(
+            auctions[_strategy] == address(0),
+            "AuctionMiddleMan: Strategy already added"
+        );
         address asset = IStrategyInterface(_strategy).asset();
         address management = IStrategyInterface(_strategy).management();
-        address auction = AUCTION_FACTORY.createNewAuction(asset, management, address(this));
+        address auction = AUCTION_FACTORY.createNewAuction(
+            asset,
+            management,
+            address(this)
+        );
         auctions[_strategy] = auction;
     }
 
@@ -62,28 +79,38 @@ contract AuctionMiddleMan is Governance {
         auctions[_strategy] = address(0);
     }
 
-    function setAuction(address _strategy, address _auction) external onlyGovernance {
-        require(auctions[_strategy] != address(0), "AuctionMiddleMan: not added");
+    function setAuction(
+        address _strategy,
+        address _auction
+    ) external onlyGovernance {
+        require(
+            auctions[_strategy] != address(0),
+            "AuctionMiddleMan: not added"
+        );
         require(_auction != address(0), "AuctionMiddleMan: zero address");
         auctions[_strategy] = _auction;
     }
 
-    function setCampaignDuration(uint32 _campaignDuration) external onlyGovernance {
-        require(_campaignDuration > 1 days, "AuctionMiddleMan: Campaign duration");
+    function setCampaignDuration(
+        uint32 _campaignDuration
+    ) external onlyGovernance {
+        require(
+            _campaignDuration > 1 days,
+            "AuctionMiddleMan: Campaign duration"
+        );
         campaignDuration = _campaignDuration;
     }
 
-    function isActive(address _strategy) external view returns (bool) {
-        return false;
+    function isActive(address _token) external view returns (bool) {
+        return IAuction(auctions[msg.sender]).isActive(_token);
     }
 
-    function available(address _strategy) external view returns (uint256) {
-        return 0;
+    function available(address _token) external view returns (uint256) {
+        return IAuction(auctions[msg.sender]).available(_token);
     }
 
     function kick(address _token) external onlyAddedStrategy returns (uint256) {
-        if (_token == KAT) {
-
+        if (_token == KAT || _token == WKAT) {
             _createCampaign(msg.sender);
         } else {
             uint256 _kicked = ERC20(_token).balanceOf(address(this));
@@ -91,7 +118,7 @@ contract AuctionMiddleMan is Governance {
             if (_kicked > 0) {
                 ERC20(_token).safeTransfer(auctions[msg.sender], _kicked);
             }
-            
+
             return IAuction(auctions[msg.sender]).kick(_token);
         }
     }
@@ -99,10 +126,13 @@ contract AuctionMiddleMan is Governance {
     function _createCampaign(address _strategy) internal {
         uint256 katBalance = ERC20(KAT).balanceOf(address(this));
         uint256 kicked = katBalance - lastKatBalance;
-        
+
         if (kicked == 0) return;
 
-        require(ERC20(WKAT).balanceOf(address(this)) >= kicked, "AuctionMiddleMan: not enough WKAT");
+        require(
+            ERC20(WKAT).balanceOf(address(this)) >= kicked,
+            "AuctionMiddleMan: not enough WKAT"
+        );
 
         // Update lastKatBalance for next kick
         lastKatBalance = katBalance;
@@ -115,22 +145,33 @@ contract AuctionMiddleMan is Governance {
                 creator: address(0),
                 rewardToken: WKAT,
                 amount: kicked,
-                campaignType: 4,
+                campaignType: 4, // ??
                 startTimestamp: uint32(block.timestamp),
                 duration: campaignDuration,
-                campaignData: ""
+                campaignData: "" // ???
             })
         );
     }
 
     function wrapKat(uint256 _amount) external onlyGovernance {
-        require(ERC20(KAT).balanceOf(msg.sender) >= _amount, "AuctionMiddleMan: not enough KAT");
+        require(
+            ERC20(KAT).balanceOf(address(this)) >= _amount,
+            "AuctionMiddleMan: not enough KAT"
+        );
         ERC20(KAT).safeTransfer(KAT_WRAPPER, _amount);
 
         lastKatBalance -= _amount;
     }
 
-    function sweep(address _token, uint256 _amount, address _to) external onlyGovernance {
+    function syncKatBalance() external onlyGovernance {
+        lastKatBalance = ERC20(KAT).balanceOf(address(this));
+    }
+
+    function sweep(
+        address _token,
+        uint256 _amount,
+        address _to
+    ) external onlyGovernance {
         uint256 balance = ERC20(_token).balanceOf(address(this));
         if (balance < _amount) {
             _amount = balance;
@@ -142,5 +183,4 @@ contract AuctionMiddleMan is Governance {
 
         ERC20(_token).safeTransfer(_to, _amount);
     }
-
 }
