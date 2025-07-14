@@ -48,10 +48,7 @@ contract AuctionMiddleMan is Governance {
 
     address public constant KAT = 0x7F1f4b4b29f5058fA32CC7a97141b8D7e5ABDC2d;
 
-    address public constant WKAT = 0x3ba1fbC4c3aEA775d335b31fb53778f46FD3a330;
-
-    address public constant KAT_WRAPPER =
-        0xF057afeEc22E220f47AD4220871364e9E828b2e9;
+    address public constant WKAT = 0x6E9C1F88a960fE63387eb4b71BC525a9313d8461;
 
     mapping(address => Strategy) public strategies;
 
@@ -72,13 +69,16 @@ contract AuctionMiddleMan is Governance {
             !_isAddedStrategy(_strategy),
             "AuctionMiddleMan: Strategy already added"
         );
+        require(_campaignData.length > 0, "AuctionMiddleMan: campaign data");
+
         address asset = IStrategyInterface(_strategy).asset();
         address management = IStrategyInterface(_strategy).management();
         address auction = AUCTION_FACTORY.createNewAuction(
-            asset,
-            management,
-            address(this)
+            asset, // want
+            _strategy, // receiver
+            management // governance
         );
+    
         strategies[_strategy] = Strategy({
             auction: auction,
             campaignData: _campaignData
@@ -103,6 +103,18 @@ contract AuctionMiddleMan is Governance {
         );
         require(_auction != address(0), "AuctionMiddleMan: zero address");
         strategies[_strategy].auction = _auction;
+    }
+
+    function setCampaignData(
+        address _strategy,
+        bytes calldata _campaignData
+    ) external onlyGovernance {
+        require(
+            _isAddedStrategy(_strategy),
+            "AuctionMiddleMan: Strategy not added"
+        );
+        require(_campaignData.length > 0, "AuctionMiddleMan: campaign data");
+        strategies[_strategy].campaignData = _campaignData;
     }
 
     function setCampaignDuration(
@@ -162,7 +174,7 @@ contract AuctionMiddleMan is Governance {
                 creator: address(0),
                 rewardToken: WKAT,
                 amount: kicked,
-                campaignType: 4, // ??
+                campaignType: 18,
                 startTimestamp: uint32(block.timestamp),
                 duration: campaignDuration,
                 campaignData: _campaignData
@@ -177,7 +189,7 @@ contract AuctionMiddleMan is Governance {
             ERC20(KAT).balanceOf(address(this)) >= _amount,
             "AuctionMiddleMan: not enough KAT"
         );
-        ERC20(KAT).safeTransfer(KAT_WRAPPER, _amount);
+        ERC20(KAT).safeTransfer(WKAT, _amount);
 
         lastKatBalance -= _amount;
     }
