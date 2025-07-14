@@ -23,6 +23,10 @@ interface IAuctionFactory {
 contract AuctionMiddleMan is Governance {
     using SafeERC20 for ERC20;
 
+    event StrategyAdded(address indexed strategy);
+    event StrategyRemoved(address indexed strategy);
+    event CampaignDurationSet(uint32 campaignDuration);
+
     struct Strategy {
         address auction;
         bytes campaignData;
@@ -78,11 +82,13 @@ contract AuctionMiddleMan is Governance {
             _strategy, // receiver
             management // governance
         );
-    
+
         strategies[_strategy] = Strategy({
             auction: auction,
             campaignData: _campaignData
         });
+
+        emit StrategyAdded(_strategy);
     }
 
     function removeStrategy(address _strategy) external onlyGovernance {
@@ -91,6 +97,8 @@ contract AuctionMiddleMan is Governance {
             "AuctionMiddleMan: Strategy not added"
         );
         delete strategies[_strategy];
+
+        emit StrategyRemoved(_strategy);
     }
 
     function setAuction(
@@ -125,6 +133,8 @@ contract AuctionMiddleMan is Governance {
             "AuctionMiddleMan: Campaign duration"
         );
         campaignDuration = _campaignDuration;
+
+        emit CampaignDurationSet(_campaignDuration);
     }
 
     function isActive(address _token) external view returns (bool) {
