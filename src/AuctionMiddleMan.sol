@@ -161,6 +161,15 @@ contract AuctionMiddleMan is Governance {
 
         emit FeeRecipientSet(_feeRecipient);
     }
+
+    function want() external view returns (address) {
+        return IStrategyInterface(msg.sender).asset();
+    }
+
+    function receiver() external view returns (address) {
+        return msg.sender;
+    }
+
     function isActive(address _token) external view returns (bool) {
         return IAuction(strategies[msg.sender].auction).isActive(_token);
     }
