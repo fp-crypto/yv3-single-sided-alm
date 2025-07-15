@@ -124,12 +124,13 @@ contract RoundingProtectionTests is Setup {
         TestParams memory params = _getTestParams(address(strategy));
 
         // For stable pairs (USDC/DAI), use reasonable test amounts
-        int256 decimalDiff = int256(params.assetDecimals) - int256(params.pairedAssetDecimals);
+        int256 decimalDiff = int256(params.assetDecimals) -
+            int256(params.pairedAssetDecimals);
         if (decimalDiff >= -12 && decimalDiff <= 12) {
             // This is likely a stable pair, just test with reasonable amounts
             uint256 testAmount = 100 * 10 ** params.pairedAssetDecimals; // 100 units
             airdrop(params.pairedAsset, address(strategy), testAmount);
-            
+
             uint256 result = strategy.estimatedTotalAsset();
             assertGt(result, 0, "Should calculate value for paired tokens");
             return;
@@ -263,7 +264,10 @@ contract RoundingProtectionTests is Setup {
             // Get pool fee
             uint24 poolFee = IUniswapV3Pool(pool).fee();
             uint256 totalDiscountBps = poolFee / 100 + discountBps;
-            expectedValue = expectedValue - (expectedValue * totalDiscountBps) / 10000;
+            expectedValue =
+                expectedValue -
+                (expectedValue * totalDiscountBps) /
+                10000;
 
             // Results should be very close (within 1% due to rounding and discounts)
             if (expectedValue > 0 && strategyResult > 0) {
