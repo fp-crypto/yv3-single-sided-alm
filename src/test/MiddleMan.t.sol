@@ -56,7 +56,7 @@ contract TestAuctionMiddleMan is Test {
 
     address public governance = address(this);
     address public user = address(0x123);
-
+    address public feeRecipient = address(0x999);
     event StrategyAdded(address indexed strategy, address auction);
     event StrategyRemoved(address indexed strategy);
     event CampaignCreated(uint256 amount);
@@ -67,7 +67,9 @@ contract TestAuctionMiddleMan is Test {
 
         strategy = new MockStrategy(address(otherToken), governance);
 
-        middleman = new AuctionMiddleMan(governance);
+        middleman = new AuctionMiddleMan(governance, feeRecipient);
+
+        middleman.setKatFee(0);
 
         vm.prank(katManager);
         IKat(address(kat)).setLockExemption(address(middleman), true);
@@ -83,6 +85,8 @@ contract TestAuctionMiddleMan is Test {
     function test_Constructor() public {
         assertEq(middleman.governance(), governance);
         assertEq(middleman.campaignDuration(), 1 weeks);
+        assertEq(middleman.feeRecipient(), feeRecipient);
+        assertEq(middleman.katFee(), 0);
     }
 
     function test_AddStrategy() public {
@@ -214,6 +218,24 @@ contract TestAuctionMiddleMan is Test {
         middleman.setCampaignDuration(shortDuration);
     }
 
+    function test_SetKatFee() public {
+        uint256 newFee = 1000;
+        middleman.setKatFee(newFee);
+        assertEq(middleman.katFee(), newFee);
+    }
+
+    function test_SetKatFee_RevertIfTooHigh() public {
+        uint256 newFee = 1001;
+        vm.expectRevert("AuctionMiddleMan: kat fee");
+        middleman.setKatFee(newFee);
+    }
+
+    function test_SetFeeRecipient() public {
+        address newRecipient = address(0x998);
+        middleman.setFeeRecipient(newRecipient);
+        assertEq(middleman.feeRecipient(), newRecipient);
+    }
+
     function test_Kick_NonKatToken() public {
         MockERC20 toKick = new MockERC20("TOK", "TOK");
 
@@ -243,6 +265,24 @@ contract TestAuctionMiddleMan is Test {
         uint256 kicked = middleman.kick(address(kat));
 
         assertEq(kicked, katBalance);
+    }
+
+    function test_Kick_KatToken_WithKatFee() public {
+        uint256 katFee = 500;
+        middleman.setKatFee(katFee);
+
+        bytes memory campaignData = abi.encode("test campaign");
+        middleman.addStrategy(address(strategy), campaignData);
+
+        uint256 katBalance = kat.balanceOf(address(middleman));
+        uint256 fee = (katBalance * katFee) / 10_000;
+
+        vm.prank(address(strategy));
+        uint256 kicked = middleman.kick(address(kat));
+
+        assertEq(kicked, katBalance - fee);
+        assertEq(kat.balanceOf(feeRecipient), fee);
+        assertEq(middleman.lastKatBalance(), katBalance - fee);
     }
 
     function test_Kick_RevertIfNotStrategy() public {

@@ -26,6 +26,8 @@ contract AuctionMiddleMan is Governance {
     event StrategyAdded(address indexed strategy);
     event StrategyRemoved(address indexed strategy);
     event CampaignDurationSet(uint32 campaignDuration);
+    event KatFeeSet(uint256 katFee);
+    event FeeRecipientSet(address feeRecipient);
 
     struct Strategy {
         address auction;
@@ -60,9 +62,18 @@ contract AuctionMiddleMan is Governance {
 
     uint32 public campaignDuration;
 
-    constructor(address _governance) Governance(_governance) {
+    uint256 public katFee;
+
+    address public feeRecipient;
+
+    constructor(
+        address _governance,
+        address _feeRecipient
+    ) Governance(_governance) {
         campaignDuration = 1 weeks;
         DISTRIBUTION_CREATOR.acceptConditions();
+        katFee = 500;
+        feeRecipient = _feeRecipient;
     }
 
     function addStrategy(
@@ -137,6 +148,19 @@ contract AuctionMiddleMan is Governance {
         emit CampaignDurationSet(_campaignDuration);
     }
 
+    function setKatFee(uint256 _katFee) external onlyGovernance {
+        require(_katFee <= 1000, "AuctionMiddleMan: kat fee");
+        katFee = _katFee;
+
+        emit KatFeeSet(_katFee);
+    }
+
+    function setFeeRecipient(address _feeRecipient) external onlyGovernance {
+        require(_feeRecipient != address(0), "AuctionMiddleMan: zero address");
+        feeRecipient = _feeRecipient;
+
+        emit FeeRecipientSet(_feeRecipient);
+    }
     function isActive(address _token) external view returns (bool) {
         return IAuction(strategies[msg.sender].auction).isActive(_token);
     }
@@ -172,6 +196,14 @@ contract AuctionMiddleMan is Governance {
             ERC20(WKAT).balanceOf(address(this)) >= kicked,
             "AuctionMiddleMan: not enough WKAT"
         );
+
+        if (katFee > 0) {
+            uint256 fee = (kicked * katFee) / 10_000;
+            kicked -= fee;
+            katBalance -= fee;
+
+            ERC20(KAT).safeTransfer(feeRecipient, fee);
+        }
 
         // Update lastKatBalance for next kick
         lastKatBalance = katBalance;
