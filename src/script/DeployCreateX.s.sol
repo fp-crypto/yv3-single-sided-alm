@@ -8,13 +8,13 @@ import {StrategyFactory} from "../StrategyFactory.sol";
 
 contract DeployCreateX is Script, CreateXScript {
     bytes32 private constant SALT = keccak256("Yearn Vaults V3");
-    address private me = 0x787aba336583f4A1D4f8cBBFDFFD49f3a38De665;
+    address private signer = 0x787aba336583f4A1D4f8cBBFDFFD49f3a38De665;
     address private sms = 0xBe7c7efc1ef3245d37E3157F76A512108D6D7aE6;
     address private tks = 0x283132390eA87D6ecc20255B59Ba94329eE17961;
 
     function run() public {
         bytes memory constructorArgs = abi.encode(
-            me, // address _management,
+            signer, // address _management,
             sms, // address _performanceFeeRecipient,
             tks, // address _keeper,
             sms // address _emergencyAdmin,
@@ -38,7 +38,7 @@ contract DeployCreateX is Script, CreateXScript {
         console.log("Computed: %s", computedAddress);
 
         // Deploy using CREATE2
-        vm.startBroadcast(me);
+        vm.startBroadcast(signer);
         address deployedAddress = CreateX.deployCreate2(SALT, initCode);
         vm.stopBroadcast();
 
